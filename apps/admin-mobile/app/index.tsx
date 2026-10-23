@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
 import { useAdminAuthStore } from '../src/stores/adminAuthStore';
 import { loginSchema } from '@southcolours/validation';
+import { API_BASE_URL } from '../src/config/api';
 
 const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
 
@@ -39,7 +40,7 @@ export default function AdminLoginScreen() {
     setLoading(true);
     try {
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_ADMIN_API_URL || 'http://localhost:8080/api/v1'}/admin/auth/login`,
+        `${API_BASE_URL}/admin/auth/login`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

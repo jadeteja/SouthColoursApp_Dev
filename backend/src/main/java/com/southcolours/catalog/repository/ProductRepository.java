@@ -24,4 +24,10 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     @Query("SELECT p FROM Product p WHERE p.isActive = true AND (p.category.id = :categoryId OR p.category.parent.id = :categoryId)")
     Page<Product> findByCategoryIdOrParentId(@Param("categoryId") Long categoryId, Pageable pageable);
+
+    @Query("SELECT p FROM Product p WHERE p.isActive = true AND (p.category.id = :categoryId OR p.category.parent.id = :categoryId) AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.description) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<Product> findByCategoryIdOrParentIdAndSearch(@Param("categoryId") Long categoryId, @Param("search") String search, Pageable pageable);
+
+    @Query("SELECT p FROM Product p WHERE p.isActive = true AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.description) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<Product> findBySearch(@Param("search") String search, Pageable pageable);
 }

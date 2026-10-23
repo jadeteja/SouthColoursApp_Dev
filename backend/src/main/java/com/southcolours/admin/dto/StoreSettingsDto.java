@@ -23,4 +23,7 @@ public class StoreSettingsDto {
     private boolean twoFactorAuthEnabled;
     private String primaryThemeColor;
     private String defaultLanguage;
+    private String razorpayKeyId;
+    private String razorpayKeySecret;
+    private boolean codEnabled;
 }

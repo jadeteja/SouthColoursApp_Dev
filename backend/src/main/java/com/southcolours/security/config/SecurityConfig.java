@@ -42,9 +42,13 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/admin/auth/**").permitAll()
                         // Public Catalog APIs
+                        .requestMatchers(HttpMethod.GET, "/api/v1/home-feed").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/banners/**").permitAll()
+                        .requestMatchers("/api/v1/media/**").permitAll()
+                        .requestMatchers("/api/v1/uploads/**").permitAll()
+                        .requestMatchers("/api/v1/payment-gateway/**").permitAll()
                         // Webhooks
                         .requestMatchers("/api/v1/webhooks/**").permitAll()
                         // Swagger & Actuator

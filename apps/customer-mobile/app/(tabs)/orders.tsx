@@ -7,39 +7,23 @@ import {
   TouchableOpacity,
   Platform,
   StatusBar as RNStatusBar,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
+import { useOrderStore, CustomerOrder } from '../../src/stores/orderStore';
 
 const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
 
 export default function MyOrdersScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('All Orders');
+  const { orders } = useOrderStore();
+  const [activeTab, setActiveTab] = useState<'All Orders' | 'Processing' | 'Shipped' | 'Delivered'>('All Orders');
 
-  const orders = [
-    {
-      id: 1,
-      orderNumber: '#SC123456',
-      date: '12 May 2024',
-      status: 'Delivered',
-      statusColor: colors.success,
-      totalAmount: 4398,
-      items: [
-        { name: 'Pink Lehenga Set', size: '3-4Y', price: 2499 },
-        { name: 'Yellow Anarkali', size: '2-3Y', price: 1899 },
-      ],
-    },
-    {
-      id: 2,
-      orderNumber: '#SC123321',
-      date: '05 May 2024',
-      status: 'Shipped',
-      statusColor: '#2196F3',
-      totalAmount: 1599,
-      items: [{ name: "Boy's Kurta Set", size: '4-5Y', price: 1599 }],
-    },
-  ];
+  const filteredOrders = orders.filter((o) => {
+    if (activeTab === 'All Orders') return true;
+    return o.status.toLowerCase() === activeTab.toLowerCase();
+  });
 
   return (
     <View style={styles.safeArea}>
@@ -47,14 +31,18 @@ export default function MyOrdersScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Orders</Text>
         <View style={styles.headerIcons}>
-          <TouchableOpacity><Text style={{ fontSize: 18 }}>🔍</Text></TouchableOpacity>
-          <TouchableOpacity><Text style={{ fontSize: 18 }}>🛍️</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/categories')}>
+            <Text style={{ fontSize: 18 }}>🔍</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/cart')}>
+            <Text style={{ fontSize: 18 }}>🛍️</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
       {/* Status Tabs */}
       <View style={styles.tabsRow}>
-        {['All Orders', 'Processing', 'Shipped', 'Delivered'].map((tab) => (
+        {(['All Orders', 'Processing', 'Shipped', 'Delivered'] as const).map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
@@ -69,9 +57,29 @@ export default function MyOrdersScreen() {
 
       {/* Orders List */}
       <FlatList
-        data={orders}
+        data={filteredOrders}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={{ fontSize: 48, marginBottom: 12 }}>🛍️</Text>
+            <Text style={styles.emptyTitle}>
+              {activeTab === 'All Orders' ? 'No orders placed yet' : `No ${activeTab.toLowerCase()} orders`}
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              {activeTab === 'All Orders'
+                ? "You haven't placed any orders yet. Discover our trendy collection of kids dresses!"
+                : `There are currently no orders under the ${activeTab.toLowerCase()} status.`}
+            </Text>
+            <TouchableOpacity
+              style={styles.browseBtn}
+              activeOpacity={0.8}
+              onPress={() => router.push('/(tabs)/home')}
+            >
+              <Text style={styles.browseBtnText}>Start Shopping</Text>
+            </TouchableOpacity>
+          </View>
+        }
         renderItem={({ item }) => (
           <View style={styles.orderCard}>
             <View style={styles.orderCardHeader}>
@@ -79,17 +87,44 @@ export default function MyOrdersScreen() {
                 <Text style={styles.orderNum}>{item.orderNumber}</Text>
                 <Text style={styles.orderDate}>{item.date}</Text>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: item.status === 'Delivered' ? colors.successLight : '#E3F2FD' }]}>
-                <Text style={[styles.statusText, { color: item.statusColor }]}>{item.status}</Text>
+              <View style={[styles.statusBadge, {
+                backgroundColor: item.status === 'Delivered'
+                  ? '#ecfdf5'
+                  : item.status === 'Shipped'
+                  ? '#eff6ff'
+                  : '#fffbeb',
+              }]}>
+                <Text style={[styles.statusText, {
+                  color: item.status === 'Delivered'
+                    ? '#059669'
+                    : item.status === 'Shipped'
+                    ? '#2563eb'
+                    : '#d97706',
+                }]}>
+                  {item.status}
+                </Text>
               </View>
             </View>
 
             {/* Items */}
             {item.items.map((prod, idx) => (
               <View key={idx} style={styles.productRow}>
-                <View style={styles.thumb}><Text style={{ fontSize: 24 }}>👗</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.productName}>{prod.name} (Size: {prod.size})</Text>
+                {prod.imageUrl ? (
+                  <Image
+                    source={{ uri: prod.imageUrl }}
+                    style={styles.thumbImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.thumb}>
+                    <Text style={{ fontSize: 24 }}>👗</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.productName} numberOfLines={2}>
+                    {prod.name}
+                  </Text>
+                  <Text style={styles.productVariant}>Size: {prod.size} {prod.quantity ? `• Qty: ${prod.quantity}` : ''}</Text>
                   <Text style={styles.productPrice}>₹ {prod.price}</Text>
                 </View>
               </View>
@@ -102,7 +137,11 @@ export default function MyOrdersScreen() {
               </View>
               <TouchableOpacity
                 style={styles.detailsBtn}
-                onPress={() => router.push(`/order-tracking?orderNumber=${encodeURIComponent(item.orderNumber)}`)}
+                activeOpacity={0.8}
+                onPress={() => {
+                  const num = item.orderNumber.replace('#', '');
+                  router.push(`/order-tracking?orderNumber=${encodeURIComponent(num)}`);
+                }}
               >
                 <Text style={styles.detailsBtnText}>View Details</Text>
               </TouchableOpacity>
@@ -216,6 +255,48 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     color: colors.primaryText,
     fontWeight: typography.fontWeights.medium,
+  },
+  productVariant: {
+    fontSize: 11,
+    color: colors.mutedText,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  thumbImage: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.sm,
+    backgroundColor: '#f1f5f9',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 24,
+  },
+  emptyTitle: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+  },
+  emptySubtitle: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.secondaryText,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  browseBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+  },
+  browseBtnText: {
+    color: colors.white,
+    fontWeight: typography.fontWeights.bold,
+    fontSize: typography.fontSizes.xs,
   },
   productPrice: {
     fontSize: typography.fontSizes.xs,

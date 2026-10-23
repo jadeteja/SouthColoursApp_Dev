@@ -43,9 +43,9 @@ app:
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
     refresh-expiration-ms: ${REFRESH_TOKEN_EXPIRATION_MS:604800000}
   razorpay:
-    key-id: ${RAZORPAY_KEY_ID:rzp_test_placeholder}
-    key-secret: ${RAZORPAY_KEY_SECRET:razorpay_secret_placeholder}
-    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:webhook_secret_placeholder}
+    key-id: ${RAZORPAY_KEY_ID:rzp_test_Tplnc0eTN5xGQt}
+    key-secret: ${RAZORPAY_KEY_SECRET:Sxmrg4J0p52g2JOb9iGp3S9P}
+    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:southcolours}
   cors:
     allowed-origins: "*"
 

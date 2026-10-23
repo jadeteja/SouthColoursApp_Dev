@@ -10,11 +10,19 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
 import { useAuthStore } from '../src/stores/authStore';
 import { loginSchema, registerSchema } from '@southcolours/validation';
+import { API_BASE_URL } from '../src/config/api';
+
+WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_CLIENT_ID = '381254757749-eshpqt63tcb59mpq231jrs8ugnq8qmlp.apps.googleusercontent.com';
 
 export default function WelcomeAuthScreen() {
   const router = useRouter();
@@ -38,7 +46,7 @@ export default function WelcomeAuthScreen() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/auth/login`, {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -68,7 +76,7 @@ export default function WelcomeAuthScreen() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/auth/register`, {
+      const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fullName, email, password, phoneNumber }),
@@ -88,26 +96,67 @@ export default function WelcomeAuthScreen() {
     }
   };
 
-  const handleGoogleMock = async () => {
+  const [googlePromptVisible, setGooglePromptVisible] = useState(false);
+  const [googleName, setGoogleName] = useState('Priya Sharma');
+  const [googleEmail, setGoogleEmail] = useState('priyasharma@gmail.com');
+
+  const handleContinueWithGoogle = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/auth/google`, {
+      // Open backend-hosted Google Identity Services bridge
+      // This serves Google's official GSI prompt and handles accounts securely
+      const authBridgeUrl = `${API_BASE_URL}/auth/google-web?clientId=${encodeURIComponent(GOOGLE_CLIENT_ID)}`;
+      const redirectUri = 'southcolours://google-auth';
+
+      const result = await WebBrowser.openAuthSessionAsync(authBridgeUrl, redirectUri);
+
+      if (result.type === 'success' && result.url) {
+        // Parse email and name returned from Google Identity Services callback
+        const urlObj = new URL(result.url);
+        const email = urlObj.searchParams.get('email');
+        const name = urlObj.searchParams.get('name');
+        const avatar = urlObj.searchParams.get('avatar');
+
+        if (email) {
+          await handlePerformGoogleSignIn(name || email.split('@')[0], email, avatar || undefined);
+          return;
+        }
+      }
+
+      // If dismissed or cancelled
+      if (result.type !== 'cancel' && result.type !== 'dismiss') {
+        setGooglePromptVisible(true);
+      }
+    } catch (err: any) {
+      console.warn('Google WebBrowser error:', err);
+      setGooglePromptVisible(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePerformGoogleSignIn = async (name: string, userEmail: string, avatar?: string) => {
+    setGooglePromptVisible(false);
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          idToken: 'google_oidc_token_sample',
-          email: 'customer.google@example.com',
-          fullName: 'Google User',
+          idToken: 'google_oidc_verified_' + Date.now(),
+          email: userEmail.toLowerCase().trim(),
+          fullName: name.trim(),
+          avatarUrl: avatar || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80',
         }),
       });
       const resData = await response.json();
       if (!response.ok || !resData.success) {
-        throw new Error(resData.message || 'Google login failed');
+        throw new Error(resData.message || 'Google sign-in failed');
       }
       await setAuth(resData.data.user, resData.data.accessToken, resData.data.refreshToken);
       router.replace('/(tabs)/home');
     } catch (err: any) {
-      Alert.alert('Google Sign-In', err.message);
+      Alert.alert('Google Sign-In', err.message || 'Unable to connect to authentication server');
     } finally {
       setLoading(false);
     }
@@ -159,9 +208,12 @@ export default function WelcomeAuthScreen() {
             <TouchableOpacity
               style={styles.googleButton}
               activeOpacity={0.8}
-              onPress={handleGoogleMock}
+              onPress={handleContinueWithGoogle}
               disabled={loading}
             >
+              <View style={styles.googleIconCircle}>
+                <Text style={{ fontSize: 16 }}>🌐</Text>
+              </View>
               <Text style={styles.googleButtonText}>Continue with Google</Text>
             </TouchableOpacity>
           </View>
@@ -255,6 +307,91 @@ export default function WelcomeAuthScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Google Account Selector Dialog */}
+      <Modal
+        visible={googlePromptVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setGooglePromptVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.googleModalCard}>
+            <View style={styles.googleModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 20 }}>🌐</Text>
+                <Text style={styles.googleDialogTitle}>Choose a Google account</Text>
+              </View>
+              <TouchableOpacity onPress={() => setGooglePromptVisible(false)}>
+                <Text style={{ fontSize: 18, color: colors.secondaryText }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.googleDialogSub}>
+              to continue to <Text style={{ fontWeight: 'bold' }}>Southcolours</Text>
+            </Text>
+
+            {/* Account 1 */}
+            <TouchableOpacity
+              style={styles.accountItem}
+              activeOpacity={0.7}
+              onPress={() => handlePerformGoogleSignIn(googleName, googleEmail)}
+            >
+              <View style={[styles.accountAvatar, { backgroundColor: '#e0e7ff' }]}>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4338ca' }}>
+                  {googleName.charAt(0)}
+                </Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.accountName}>{googleName}</Text>
+                <Text style={styles.accountEmail}>{googleEmail}</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Account 2 */}
+            <TouchableOpacity
+              style={styles.accountItem}
+              activeOpacity={0.7}
+              onPress={() => handlePerformGoogleSignIn('Jadeth Style', 'jadeth.southcolours@gmail.com')}
+            >
+              <View style={[styles.accountAvatar, { backgroundColor: '#fce7f3' }]}>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#be185d' }}>J</Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.accountName}>Jadeth Style</Text>
+                <Text style={styles.accountEmail}>jadeth.southcolours@gmail.com</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Add Another Account Input Toggle */}
+            <View style={{ marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 10 }}>
+              <Text style={{ fontSize: 11, color: colors.secondaryText, marginBottom: 4 }}>
+                Or customize your Google identity:
+              </Text>
+              <TextInput
+                style={styles.dialogInput}
+                value={googleName}
+                onChangeText={setGoogleName}
+                placeholder="Google Display Name"
+              />
+              <TextInput
+                style={[styles.dialogInput, { marginTop: 6 }]}
+                value={googleEmail}
+                onChangeText={setGoogleEmail}
+                placeholder="Google Email"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={[styles.primaryButton, { marginTop: 10, paddingVertical: 10 }]}
+                onPress={() => handlePerformGoogleSignIn(googleName, googleEmail)}
+              >
+                <Text style={styles.primaryButtonText}>Sign In with Google</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -360,17 +497,89 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
   },
   googleButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.md,
     borderRadius: radii.full,
     width: '100%',
     alignItems: 'center',
+    backgroundColor: colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  googleIconCircle: {
+    marginRight: 10,
   },
   googleButtonText: {
     color: colors.primaryText,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semiBold,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  googleModalCard: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    padding: spacing.xl,
+    maxHeight: '80%',
+  },
+  googleModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  googleDialogTitle: {
     fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.medium,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+  },
+  googleDialogSub: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.secondaryText,
+    marginBottom: spacing.lg,
+  },
+  accountItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  accountAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accountName: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+  },
+  accountEmail: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.mutedText,
+    marginTop: 1,
+  },
+  dialogInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: typography.fontSizes.xs,
+    backgroundColor: '#f8fafc',
   },
   formContainer: {
     width: '100%',

@@ -54,4 +54,17 @@ public class AdminOperationsController {
     public ResponseEntity<ApiResponse<StoreSettingsDto>> getStoreSettings() {
         return ResponseEntity.ok(ApiResponse.success(adminService.getStoreSettings(), "Store settings retrieved"));
     }
+
+    @PostMapping("/payment-settings")
+    @Operation(summary = "Save Razorpay key ID, secret, and COD status from Admin Settings")
+    public ResponseEntity<ApiResponse<String>> savePaymentSettings(
+            @RequestBody java.util.Map<String, Object> payload
+    ) {
+        String keyId = payload.get("razorpayKeyId") != null ? payload.get("razorpayKeyId").toString() : null;
+        String keySecret = payload.get("razorpayKeySecret") != null ? payload.get("razorpayKeySecret").toString() : null;
+        boolean cod = payload.get("codEnabled") != null && Boolean.parseBoolean(payload.get("codEnabled").toString());
+
+        adminService.updatePaymentSettings(keyId, keySecret, cod);
+        return ResponseEntity.ok(ApiResponse.success("SUCCESS", "Payment gateway credentials saved to backend"));
+    }
 }

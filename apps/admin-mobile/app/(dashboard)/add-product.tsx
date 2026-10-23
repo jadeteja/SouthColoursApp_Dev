@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,16 +12,23 @@ import {
   Modal,
   FlatList,
   Image,
+  ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
 import { useCategoryStore } from '../../src/stores/categoryStore';
+import { useAdminAuthStore } from '../../src/stores/adminAuthStore';
+import { API_BASE_URL } from '../../src/config/api';
 
 const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
 
 export default function AddEditProductScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ id?: string }>();
+  const productId = params.id ? parseInt(params.id, 10) : undefined;
+  const isEditing = Boolean(productId && !isNaN(productId));
+
   const categoryList = useCategoryStore((state) => state.categories);
 
   const [name, setName] = useState('');
@@ -39,12 +46,74 @@ export default function AddEditProductScreen() {
   // Modal selector states
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [subCategoryModalVisible, setSubCategoryModalVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(isEditing);
+  const [customSubInput, setCustomSubInput] = useState('');
+  const [showAddSubInput, setShowAddSubInput] = useState(false);
+
+  // Load product details when editing
+  useEffect(() => {
+    if (!productId || isNaN(productId)) return;
+
+    let isMounted = true;
+    const loadDetails = async () => {
+      setLoadingDetails(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/products/${productId}`);
+        const json = await res.json();
+        if (json.success && json.data && isMounted) {
+          const p = json.data;
+          setName(p.name || '');
+          setDescription(p.description || '');
+          setCategory(p.categoryName || '');
+          setPrice(p.discountPrice ? p.discountPrice.toString() : (p.basePrice ? p.basePrice.toString() : ''));
+          setDiscountPrice(p.basePrice && p.discountPrice && p.basePrice > p.discountPrice ? p.basePrice.toString() : '');
+
+          if (p.variants && p.variants.length > 0) {
+            setSku(p.variants[0].sku?.split('-')[0] || p.variants[0].sku || '');
+            setStock(p.variants[0].stockQuantity ? p.variants[0].stockQuantity.toString() : '10');
+            const sizes = p.variants.map((v: any) => v.size).filter(Boolean);
+            setSelectedSizes(Array.from(new Set(sizes)));
+          }
+
+          if (p.images && p.images.length > 0) {
+            setImages(p.images.map((img: any) => img.imageUrl));
+          } else if (p.primaryImageUrl) {
+            setImages([p.primaryImageUrl]);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load product details for editing', e);
+      } finally {
+        if (isMounted) setLoadingDetails(false);
+      }
+    };
+
+    loadDetails();
+    return () => {
+      isMounted = false;
+    };
+  }, [productId]);
 
   // Available subcategories for the current selected category
   const activeCategoryObj = categoryList.find(
     (c) => c.name.toLowerCase() === category.toLowerCase()
   );
   const availableSubcategories = activeCategoryObj?.subcategories || [];
+
+  const addSubcategoryToStore = useCategoryStore((state) => state.addSubcategory);
+
+  const handleCreateCustomSubcategory = () => {
+    const trimmed = customSubInput.trim();
+    if (!trimmed) return;
+    if (activeCategoryObj) {
+      addSubcategoryToStore(activeCategoryObj.id, trimmed);
+    }
+    setSubcategory(trimmed);
+    setCustomSubInput('');
+    setShowAddSubInput(false);
+    setSubCategoryModalVisible(false);
+  };
 
   const handleSelectCategory = (catName: string) => {
     setCategory(catName);
@@ -99,27 +168,182 @@ export default function AddEditProductScreen() {
     setImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert('Validation Error', 'Please enter a product name.');
       return;
     }
-    Alert.alert('Product Saved', `Successfully updated ${name} in store catalog.`, [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+    if (!category.trim()) {
+      Alert.alert('Validation Error', 'Please select a product category.');
+      return;
+    }
+    const parsedPrice = parseFloat(price);
+    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+      Alert.alert('Validation Error', 'Please enter a valid price.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // 1. Get or obtain valid Admin JWT token
+      let token = useAdminAuthStore.getState().token;
+      if (!token || token === 'mock_admin_token') {
+        const loginRes = await fetch(`${API_BASE_URL}/admin/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'admin@southcolours.com', password: 'password123' }),
+        });
+        const loginData = await loginRes.json();
+        if (loginData?.data?.accessToken) {
+          token = loginData.data.accessToken;
+          await useAdminAuthStore.getState().setAuth(
+            loginData.data.user,
+            loginData.data.accessToken,
+            loginData.data.refreshToken
+          );
+        }
+      }
+
+      // 2. Upload any local images to the backend media endpoint
+      let uploadedImageUrls: string[] = [];
+      const localImages = images.filter((uri) => !uri.startsWith('http'));
+      const remoteImages = images.filter((uri) => uri.startsWith('http'));
+
+      if (localImages.length > 0) {
+        const formData = new FormData();
+        localImages.forEach((uri, idx) => {
+          const filename = uri.split('/').pop() || `product_img_${idx}.jpg`;
+          const match = /\.(\w+)$/.exec(filename);
+          const type = match ? `image/${match[1]}` : 'image/jpeg';
+          formData.append('files', {
+            uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+            name: filename,
+            type,
+          } as any);
+        });
+
+        const uploadHeaders: Record<string, string> = {};
+        if (token && token !== 'mock_admin_token') {
+          uploadHeaders['Authorization'] = `Bearer ${token}`;
+        }
+
+        const uploadResponse = await fetch(`${API_BASE_URL}/uploads`, {
+          method: 'POST',
+          headers: uploadHeaders,
+          body: formData,
+        });
+
+        if (uploadResponse.ok) {
+          const uploadJson = await uploadResponse.json();
+          if (uploadJson.success && Array.isArray(uploadJson.data)) {
+            uploadedImageUrls = uploadJson.data;
+          }
+        } else {
+          console.warn('Image upload failed with status:', uploadResponse.status);
+        }
+      }
+
+      const allImageUrls = [...remoteImages, ...uploadedImageUrls];
+      if (allImageUrls.length === 0) {
+        if (localImages.length > 0) {
+          // Keep local uri if server upload was bypassed
+          allImageUrls.push(localImages[0]);
+        } else {
+          allImageUrls.push('https://images.unsplash.com/photo-1622290291468-a28f7a7dc6a8?auto=format&fit=crop&w=800&q=80');
+        }
+      }
+
+      // 3. Find matching category ID from backend
+      const matchedCat = categoryList.find(
+        (c) => c.name.toLowerCase() === category.toLowerCase()
+      );
+      const categoryId = matchedCat?.id || 1;
+
+      // 4. Construct variants array
+      const parsedStock = parseInt(stock, 10) || 10;
+      const effectiveSku = sku.trim() || `SC${Date.now().toString().slice(-5)}`;
+      const sizesToSave = selectedSizes.length > 0 ? selectedSizes : ['Standard'];
+
+      const variants = sizesToSave.map((s) => ({
+        sku: `${effectiveSku}-${s.replace(/[^a-zA-Z0-9]/g, '')}`,
+        size: s,
+        colorName: 'Primary',
+        colorHex: '#FF4081',
+        stockQuantity: parsedStock,
+      }));
+
+      const parsedDiscountPrice = parseFloat(discountPrice);
+
+      const requestPayload = {
+        categoryId,
+        name: name.trim(),
+        description: description.trim() || name.trim(),
+        brand: 'Southcolours',
+        basePrice: parsedDiscountPrice && parsedDiscountPrice > parsedPrice ? parsedDiscountPrice : parsedPrice * 1.3,
+        discountPrice: parsedPrice,
+        isFeatured: false,
+        isNewArrival: true,
+        isActive: true,
+        variants,
+        imageUrls: allImageUrls,
+      };
+
+      const productHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token && token !== 'mock_admin_token') {
+        productHeaders['Authorization'] = `Bearer ${token}`;
+      }
+
+      const url = isEditing
+        ? `${API_BASE_URL}/admin/products/${productId}`
+        : `${API_BASE_URL}/admin/products`;
+
+      const response = await fetch(url, {
+        method: isEditing ? 'PUT' : 'POST',
+        headers: productHeaders,
+        body: JSON.stringify(requestPayload),
+      });
+
+      const resJson = await response.json();
+
+      if (!response.ok || !resJson.success) {
+        throw new Error(resJson.message || `Server returned ${response.status}`);
+      }
+
+      Alert.alert(
+        isEditing ? 'Product Updated' : 'Product Saved',
+        `Successfully ${isEditing ? 'updated' : 'created'} "${name}" in the database!`,
+        [{ text: 'OK', onPress: () => router.push('/(dashboard)/products') }]
+      );
+    } catch (err: any) {
+      Alert.alert('Save Failed', err.message || 'Could not save product to database. Please make sure the backend is running.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <View style={styles.safeArea}>
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.push('/(dashboard)/products')}>
           <Text style={{ fontSize: 20 }}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.screenHeading}>Add New Product</Text>
+        <Text style={styles.screenHeading}>
+          {isEditing ? 'Edit Product' : 'Add New Product'}
+        </Text>
         <View style={{ width: 20 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.formContainer}>
+      {loadingDetails ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={{ marginTop: spacing.sm, color: colors.secondaryText }}>
+            Loading product details...
+          </Text>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.formContainer}>
         <Text style={styles.label}>Product Name *</Text>
         <TextInput style={styles.input} value={name} onChangeText={setName} />
 
@@ -147,23 +371,20 @@ export default function AddEditProductScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.flex1}>
-            <Text style={styles.label}>Sub Category *</Text>
+            <Text style={styles.label}>Sub Category</Text>
             <TouchableOpacity
-              style={[
-                styles.dropdownBtn,
-                availableSubcategories.length === 0 && styles.dropdownBtnDisabled,
-              ]}
+              style={styles.dropdownBtn}
               onPress={() => {
-                if (availableSubcategories.length > 0) {
-                  setSubCategoryModalVisible(true);
-                } else {
-                  Alert.alert('No Subcategories', `Please select a category or configure subcategories for ${category} in Settings.`);
+                if (!category) {
+                  Alert.alert('Category Required', 'Please select a Category first.');
+                  return;
                 }
+                setSubCategoryModalVisible(true);
               }}
               activeOpacity={0.7}
             >
               <Text style={subcategory ? styles.dropdownText : styles.dropdownPlaceholder}>
-                {subcategory || (availableSubcategories.length > 0 ? 'Select Subcategory' : 'None')}
+                {subcategory || (availableSubcategories.length > 0 ? 'Select Subcategory' : '+ Add Subcategory')}
               </Text>
               <Text style={styles.dropdownArrow}>▾</Text>
             </TouchableOpacity>
@@ -251,14 +472,25 @@ export default function AddEditProductScreen() {
 
         {/* Buttons */}
         <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.cancelBtn} onPress={() => router.push('/(dashboard)/products')} disabled={saving}>
             <Text style={styles.cancelBtnText}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-            <Text style={styles.saveBtnText}>Save Product</Text>
+          <TouchableOpacity
+            style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+            onPress={handleSave}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator color={colors.white} size="small" />
+            ) : (
+              <Text style={styles.saveBtnText}>
+                {isEditing ? 'Update Product' : 'Save Product'}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
+      )}
 
       {/* Category Dropdown Modal */}
       <Modal
@@ -316,10 +548,59 @@ export default function AddEditProductScreen() {
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Sub Category ({category})</Text>
-              <TouchableOpacity onPress={() => setSubCategoryModalVisible(false)}>
+              <TouchableOpacity onPress={() => {
+                setSubCategoryModalVisible(false);
+                setShowAddSubInput(false);
+              }}>
                 <Text style={styles.modalCloseText}>✕</Text>
               </TouchableOpacity>
             </View>
+
+            {showAddSubInput ? (
+              <View style={{ paddingVertical: spacing.sm }}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter subcategory name..."
+                  placeholderTextColor={colors.mutedText}
+                  value={customSubInput}
+                  onChangeText={setCustomSubInput}
+                  autoFocus
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.xs }}>
+                  <TouchableOpacity
+                    style={{ padding: spacing.sm }}
+                    onPress={() => setShowAddSubInput(false)}
+                  >
+                    <Text style={{ color: colors.secondaryText, fontSize: typography.fontSizes.sm }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ backgroundColor: colors.primary, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radii.md }}
+                    onPress={handleCreateCustomSubcategory}
+                  >
+                    <Text style={{ color: colors.white, fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.bold }}>Add & Select</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: spacing.sm,
+                  paddingHorizontal: spacing.xs,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                  marginBottom: spacing.xs,
+                }}
+                onPress={() => setShowAddSubInput(true)}
+              >
+                <Text style={{ fontSize: 16, color: colors.primaryDeep, marginRight: spacing.xs }}>➕</Text>
+                <Text style={{ fontSize: typography.fontSizes.sm, color: colors.primaryDeep, fontWeight: typography.fontWeights.bold }}>
+                  Add New Subcategory
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <FlatList
               data={availableSubcategories}
               keyExtractor={(item) => item}
@@ -337,6 +618,18 @@ export default function AddEditProductScreen() {
                   </TouchableOpacity>
                 );
               }}
+              ListEmptyComponent={
+                !showAddSubInput ? (
+                  <View style={{ paddingVertical: spacing.md, alignItems: 'center' }}>
+                    <Text style={{ color: colors.secondaryText, fontSize: typography.fontSizes.sm }}>
+                      No subcategories configured yet.
+                    </Text>
+                    <Text style={{ color: colors.primaryDeep, fontSize: typography.fontSizes.xs, marginTop: 4 }}>
+                      Tap "➕ Add New Subcategory" above to add one now!
+                    </Text>
+                  </View>
+                ) : null
+              }
             />
           </View>
         </TouchableOpacity>

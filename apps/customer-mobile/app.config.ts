@@ -34,4 +34,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: ['expo-router', 'expo-secure-store'],
   scheme: 'southcolours',
+  extra: {
+    ...config.extra,
+    eas: {
+      projectId: '568d357c-8ae0-4d21-a6cf-413746de5a11',
+    },
+  },
 });

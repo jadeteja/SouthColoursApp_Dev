@@ -34,6 +34,45 @@ public class AdminOperationsService {
 
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
+    @org.springframework.beans.factory.annotation.Value("${app.razorpay.key-id:rzp_test_placeholder}")
+    private String configuredRazorpayKeyId;
+
+    @org.springframework.beans.factory.annotation.Value("${app.razorpay.key-secret:razorpay_secret_placeholder}")
+    private String configuredRazorpayKeySecret;
+
+    private static String activeRazorpayKeyId = null;
+    private static String activeRazorpayKeySecret = null;
+    private static boolean activeCodEnabled = true;
+
+    public void updatePaymentSettings(String keyId, String keySecret, boolean codEnabled) {
+        if (keyId != null && !keyId.trim().isEmpty()) {
+            activeRazorpayKeyId = keyId.trim();
+        }
+        if (keySecret != null && !keySecret.trim().isEmpty()) {
+            activeRazorpayKeySecret = keySecret.trim();
+        }
+        activeCodEnabled = codEnabled;
+        log.info("Razorpay credentials saved dynamically: keyId={}", activeRazorpayKeyId);
+    }
+
+    public String getEffectiveRazorpayKeyId() {
+        if (activeRazorpayKeyId != null && !activeRazorpayKeyId.isEmpty()) {
+            return activeRazorpayKeyId;
+        }
+        return configuredRazorpayKeyId;
+    }
+
+    public String getEffectiveRazorpayKeySecret() {
+        if (activeRazorpayKeySecret != null && !activeRazorpayKeySecret.isEmpty()) {
+            return activeRazorpayKeySecret;
+        }
+        return configuredRazorpayKeySecret;
+    }
+
+    public boolean getEffectiveCodEnabled() {
+        return activeCodEnabled;
+    }
+
     @Transactional(readOnly = true)
     public AdminDashboardDto getDashboardMetrics() {
         long totalOrders = orderRepository.count();
@@ -119,6 +158,9 @@ public class AdminOperationsService {
                 .twoFactorAuthEnabled(true)
                 .primaryThemeColor("#FF4081")
                 .defaultLanguage("English")
+                .razorpayKeyId(getEffectiveRazorpayKeyId())
+                .razorpayKeySecret(getEffectiveRazorpayKeySecret())
+                .codEnabled(getEffectiveCodEnabled())
                 .build();
     }
 }

@@ -16,11 +16,30 @@ import {
 import { useRouter } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
 import { Category, Product, Banner } from '@southcolours/types';
+import { API_BASE_URL } from '../../src/config/api';
+import { useWishlistStore } from '../../src/stores/wishlistStore';
+import { useCartStore } from '../../src/stores/cartStore';
 
 const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
 
+// Category specific icon helper
+const getCategoryIcon = (categoryName: string): string => {
+  const lower = (categoryName || '').toLowerCase();
+  if (lower.includes('frock')) return '👗'; // Frocks
+  if (lower.includes('crop top')) return '👚'; // Lehenga Crop Top Blouse
+  if (lower.includes('lehenga')) return '✨'; // Lehenga Blouse / Ethnic
+  if (lower.includes('kurta') || lower.includes('dhoti')) return '🥻'; // Kurta Dhoti
+  if (lower.includes('mother') || lower.includes('daughter')) return '👩‍👧'; // Mother and Daughter Combo
+  if (lower.includes('brother') || lower.includes('sister')) return '👫'; // Brother and Sister Combo
+  if (lower.includes('family')) return '👨‍👩‍👧‍👦'; // Family Combo
+  if (lower.includes('offer') || lower.includes('sale')) return '🏷️'; // Offer Dresses
+  return '👗';
+};
+
 export default function HomeScreen() {
   const router = useRouter();
+  const { isInWishlist, toggleItem } = useWishlistStore();
+  const { getTotalItems } = useCartStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -29,7 +48,7 @@ export default function HomeScreen() {
 
   const fetchHomeFeed = async () => {
     try {
-      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/home-feed`);
+      const res = await fetch(`${API_BASE_URL}/home-feed`);
       const json = await res.json();
       if (json.success && json.data) {
         setBanners(json.data.banners || []);
@@ -57,14 +76,14 @@ export default function HomeScreen() {
         },
       ]);
       setCategories([
-        { id: 1, name: 'Girls', slug: 'girls', displayOrder: 1, isActive: true },
-        { id: 2, name: 'Boys', slug: 'boys', displayOrder: 2, isActive: true },
-        { id: 3, name: 'Baby Wear', slug: 'baby-wear', displayOrder: 3, isActive: true },
-        { id: 4, name: 'Ethnic Wear', slug: 'ethnic-wear', displayOrder: 4, isActive: true },
-        { id: 5, name: 'Dresses', slug: 'dresses', displayOrder: 5, isActive: true },
-        { id: 6, name: 'Tops', slug: 'tops', displayOrder: 6, isActive: true },
-        { id: 7, name: 'Bottoms', slug: 'bottoms', displayOrder: 7, isActive: true },
-        { id: 8, name: 'New Arrivals', slug: 'new-arrivals', displayOrder: 8, isActive: true },
+        { id: 11, name: 'Frocks', slug: 'frocks', displayOrder: 1, isActive: true },
+        { id: 14, name: 'Lehenga Blouse', slug: 'lehenga-blouse', displayOrder: 2, isActive: true },
+        { id: 16, name: 'Lehenga Crop Top Blouse', slug: 'lehenga-crop-top-blouse', displayOrder: 3, isActive: true },
+        { id: 17, name: 'Kurta Dhoti', slug: 'kurta-dhoti', displayOrder: 4, isActive: true },
+        { id: 9, name: 'Mother and Daughter Combo', slug: 'mother-and-daughter-combo', displayOrder: 5, isActive: true },
+        { id: 18, name: 'Brother and Sister Combo', slug: 'brother-and-sister-combo', displayOrder: 6, isActive: true },
+        { id: 10, name: 'Family Combo', slug: 'family-combo', displayOrder: 7, isActive: true },
+        { id: 19, name: 'Offer Dresses', slug: 'offer-dresses', displayOrder: 8, isActive: true },
       ]);
       setNewArrivals([
         {
@@ -131,9 +150,11 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/(tabs)/cart')}>
               <Text style={{ fontSize: 20 }}>🛍️</Text>
-              <View style={styles.cartBadge}>
-                <Text style={styles.cartBadgeText}>3</Text>
-              </View>
+              {getTotalItems() > 0 && (
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>{getTotalItems()}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -169,6 +190,16 @@ export default function HomeScreen() {
         <View style={styles.categoriesContainer}>
           <Text style={styles.sectionHeading}>Shop By Category</Text>
           <View style={styles.categoriesGrid}>
+            <TouchableOpacity
+              style={styles.categoryItem}
+              onPress={() => router.push('/(tabs)/categories?categoryId=all')}
+            >
+              <View style={[styles.categoryCircle, { backgroundColor: colors.primarySoft }]}>
+                <Text style={{ fontSize: 26 }}>✨</Text>
+              </View>
+              <Text style={styles.categoryName} numberOfLines={1}>All</Text>
+            </TouchableOpacity>
+
             {categories.map((cat) => (
               <TouchableOpacity
                 key={cat.id}
@@ -176,7 +207,7 @@ export default function HomeScreen() {
                 onPress={() => router.push(`/(tabs)/categories?categoryId=${cat.id}`)}
               >
                 <View style={styles.categoryCircle}>
-                  <Text style={{ fontSize: 28 }}>👗</Text>
+                  <Text style={{ fontSize: 28 }}>{getCategoryIcon(cat.name)}</Text>
                 </View>
                 <Text style={styles.categoryName} numberOfLines={1}>{cat.name}</Text>
               </TouchableOpacity>
@@ -194,31 +225,58 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.productGrid}>
-            {newArrivals.map((product) => (
-              <TouchableOpacity
-                key={product.id}
-                style={styles.productCard}
-                activeOpacity={0.9}
-                onPress={() => router.push(`/product/${product.id}`)}
-              >
-                <View style={styles.imagePlaceholder}>
-                  <Text style={{ fontSize: 48 }}>👗</Text>
-                  <TouchableOpacity style={styles.wishlistIcon}>
-                    <Text style={{ fontSize: 16 }}>🤍</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.productInfo}>
-                  <Text style={styles.productTitle} numberOfLines={1}>{product.name}</Text>
-                  <View style={styles.priceRow}>
-                    <Text style={styles.discountPrice}>₹{product.discountPrice}</Text>
-                    <Text style={styles.basePrice}>₹{product.basePrice}</Text>
+            {newArrivals.map((product) => {
+              const displayImg = product.primaryImageUrl || (product.images && product.images[0]?.imageUrl);
+              return (
+                <TouchableOpacity
+                  key={product.id}
+                  style={styles.productCard}
+                  activeOpacity={0.9}
+                  onPress={() => router.push(`/product/${product.id}`)}
+                >
+                  <View style={styles.imagePlaceholder}>
+                    {displayImg ? (
+                      <Image
+                        source={{ uri: displayImg }}
+                        style={styles.productImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={{ fontSize: 48 }}>👗</Text>
+                    )}
+                    <TouchableOpacity
+                      style={styles.wishlistIcon}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        toggleItem({
+                          id: product.id,
+                          name: product.name,
+                          price: product.discountPrice || product.basePrice,
+                          originalPrice: product.basePrice,
+                          imageUrl: displayImg,
+                          rating: product.averageRating,
+                          reviewCount: product.reviewCount,
+                        });
+                      }}
+                    >
+                      <Text style={{ fontSize: 16 }}>{isInWishlist(product.id) ? '❤️' : '🤍'}</Text>
+                    </TouchableOpacity>
                   </View>
-                  <View style={styles.ratingRow}>
-                    <Text style={styles.ratingText}>⭐ {product.averageRating} ({product.reviewCount})</Text>
+                  <View style={styles.productInfo}>
+                    <Text style={styles.productTitle} numberOfLines={1}>{product.name}</Text>
+                    <View style={styles.priceRow}>
+                      <Text style={styles.discountPrice}>₹{product.discountPrice}</Text>
+                      {product.basePrice > product.discountPrice && (
+                        <Text style={styles.basePrice}>₹{product.basePrice}</Text>
+                      )}
+                    </View>
+                    <View style={styles.ratingRow}>
+                      <Text style={styles.ratingText}>⭐ {product.averageRating} ({product.reviewCount})</Text>
+                    </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       </ScrollView>
@@ -396,6 +454,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    overflow: 'hidden',
+  },
+  productImage: {
+    width: '100%',
+    height: '100%',
   },
   wishlistIcon: {
     position: 'absolute',

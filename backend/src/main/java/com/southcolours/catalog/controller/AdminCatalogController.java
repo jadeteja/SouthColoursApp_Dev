@@ -41,6 +41,16 @@ public class AdminCatalogController {
         return ResponseEntity.ok(ApiResponse.success(created, "Product created successfully"));
     }
 
+    @PutMapping("/products/{id}")
+    @Operation(summary = "Update product details, variants, and images")
+    public ResponseEntity<ApiResponse<ProductDto>> updateProduct(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateProductRequest request
+    ) {
+        ProductDto updated = catalogService.updateProduct(id, request);
+        return ResponseEntity.ok(ApiResponse.success(updated, "Product updated successfully"));
+    }
+
     @PatchMapping("/products/{id}/status")
     @Operation(summary = "Toggle active / inactive status of product in store")
     public ResponseEntity<ApiResponse<Void>> toggleProductStatus(
@@ -51,9 +61,25 @@ public class AdminCatalogController {
         return ResponseEntity.ok(ApiResponse.success(null, "Product status updated"));
     }
 
+    @DeleteMapping("/products/{id}")
+    @Operation(summary = "Delete product from store catalog")
+    public ResponseEntity<ApiResponse<Void>> deleteProduct(@PathVariable Long id) {
+        catalogService.deleteProduct(id);
+        return ResponseEntity.ok(ApiResponse.success(null, "Product deleted successfully"));
+    }
+
     @GetMapping("/categories")
     @Operation(summary = "Admin category tree listing")
     public ResponseEntity<ApiResponse<List<CategoryDto>>> getCategories() {
         return ResponseEntity.ok(ApiResponse.success(catalogService.getAllCategoriesTree(), "Categories retrieved"));
+    }
+
+    @PostMapping("/categories/sync")
+    @Operation(summary = "Batch save and sync categories and subcategories into database")
+    public ResponseEntity<ApiResponse<List<CategoryDto>>> syncCategories(
+            @RequestBody List<com.southcolours.catalog.dto.SyncCategoryItemRequest> requests
+    ) {
+        List<CategoryDto> synced = catalogService.syncCategories(requests);
+        return ResponseEntity.ok(ApiResponse.success(synced, "Categories saved to database successfully"));
     }
 }

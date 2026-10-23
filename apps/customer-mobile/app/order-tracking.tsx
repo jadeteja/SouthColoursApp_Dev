@@ -6,22 +6,48 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
+  Image,
+  Linking,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
+import { useOrderStore } from '../src/stores/orderStore';
 
 export default function OrderTrackingScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const orderNumber = (params.orderNumber as string) || '#SC123456';
+  const rawOrderNumber = (params.orderNumber as string) || '#SC123456';
+  const orderNumber = rawOrderNumber.startsWith('#') ? rawOrderNumber : `#${rawOrderNumber}`;
+
+  const { getOrderByNumber } = useOrderStore();
+  const order = getOrderByNumber(orderNumber);
+
+  // Milestone timeline states
+  const isDelivered = order?.status === 'Delivered';
+  const isShipped = order?.status === 'Shipped' || isDelivered;
+  const isProcessing = true; // Placed and confirmed
 
   const steps = [
-    { label: 'Order Placed', time: '12 May, 10:00 AM', completed: true, active: false },
-    { label: 'Processing', time: '12 May, 02:00 PM', completed: true, active: false },
-    { label: 'Shipped', time: '13 May, 11:00 AM', completed: true, active: true },
-    { label: 'Out for Delivery', time: 'Pending', completed: false, active: false },
-    { label: 'Delivered', time: 'Pending', completed: false, active: false },
+    { label: 'Order Placed', time: order?.date ? `${order.date}, 10:00 AM` : '12 May, 10:00 AM', completed: true, active: false },
+    { label: 'Processing', time: order?.date ? `${order.date}, 02:30 PM` : '12 May, 02:30 PM', completed: isProcessing, active: !isShipped },
+    { label: 'Shipped', time: isShipped ? 'In Transit' : 'Pending', completed: isShipped, active: isShipped && !isDelivered },
+    { label: 'Out for Delivery', time: isDelivered ? 'Completed' : (isShipped ? 'Expected tomorrow' : 'Pending'), completed: isDelivered, active: false },
+    { label: 'Delivered', time: isDelivered ? (order?.date || 'Today') : 'Pending', completed: isDelivered, active: false },
   ];
+
+  const handleTrackLive = () => {
+    const carrier = order?.carrier || 'Delhivery Express';
+    const trk = order?.trackingId || '1234567890';
+    Alert.alert(
+      'Live Carrier Tracking',
+      `Carrier: ${carrier}\nTracking ID: ${trk}\n\nStatus: Package in transit with highest priority.`,
+      [
+        { text: 'Close', style: 'cancel' },
+        { text: 'Help & Support', onPress: () => router.push('/(tabs)/profile') },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -75,23 +101,54 @@ export default function OrderTrackingScreen() {
           <View style={styles.courierRow}>
             <Text style={{ fontSize: 24 }}>🚚</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.courierName}>Delhivery Express</Text>
-              <Text style={styles.trackingNum}>Tracking ID: 1234567890</Text>
+              <Text style={styles.courierName}>{order?.carrier || 'Delhivery Express'}</Text>
+              <Text style={styles.trackingNum}>Tracking ID: {order?.trackingId || '1234567890'}</Text>
             </View>
-            <TouchableOpacity style={styles.trackLink}>
+            <TouchableOpacity style={styles.trackLink} onPress={handleTrackLive}>
               <Text style={styles.trackLinkText}>Track</Text>
             </TouchableOpacity>
           </View>
         </View>
 
+        {/* Ordered Items Summary */}
+        {order && order.items && order.items.length > 0 && (
+          <View style={styles.itemsCard}>
+            <Text style={styles.cardHeading}>Items in this Order ({order.items.length})</Text>
+            {order.items.map((item, idx) => (
+              <View key={idx} style={styles.itemRow}>
+                {item.imageUrl ? (
+                  <Image source={{ uri: item.imageUrl }} style={styles.itemThumb} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.itemThumb, { alignItems: 'center', justifyContent: 'center' }]}>
+                    <Text style={{ fontSize: 20 }}>👗</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.itemMeta}>Size: {item.size} {item.quantity ? `• Qty: ${item.quantity}` : ''}</Text>
+                  <Text style={styles.itemPrice}>₹ {item.price}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Delivery Address Card */}
         <View style={styles.addressCard}>
           <Text style={styles.cardHeading}>Delivery Address</Text>
-          <Text style={styles.addressName}>Priya Sharma</Text>
-          <Text style={styles.addressText}>123, Green Park, Bangalore</Text>
-          <Text style={styles.addressText}>Karnataka - 560001</Text>
-          <Text style={styles.addressPhone}>9876543210</Text>
+          <Text style={styles.addressName}>{order?.deliveryAddress?.name || 'Priya Sharma'}</Text>
+          <Text style={styles.addressText}>{order?.deliveryAddress?.street || '123, Green Park, Indiranagar'}</Text>
+          <Text style={styles.addressText}>{order?.deliveryAddress?.cityStatePin || 'Bangalore, Karnataka - 560038'}</Text>
+          <Text style={styles.addressPhone}>{order?.deliveryAddress?.phone || '+91 98765 43210'}</Text>
         </View>
+
+        {/* Help & Support Button */}
+        <TouchableOpacity
+          style={styles.supportBtn}
+          onPress={() => router.push('/(tabs)/profile')}
+        >
+          <Text style={styles.supportBtnText}>Need Help with this Order? Contact Support</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -246,6 +303,57 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: spacing.lg,
+  },
+  itemsCard: {
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  itemThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.sm,
+    backgroundColor: '#f1f5f9',
+  },
+  itemName: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.primaryText,
+  },
+  itemMeta: {
+    fontSize: 11,
+    color: colors.mutedText,
+    marginTop: 2,
+  },
+  itemPrice: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.primaryDeep,
+    fontWeight: typography.fontWeights.bold,
+    marginTop: 1,
+  },
+  supportBtn: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: '#fff0f5',
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  supportBtnText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryDeep,
   },
   addressName: {
     fontSize: typography.fontSizes.sm,

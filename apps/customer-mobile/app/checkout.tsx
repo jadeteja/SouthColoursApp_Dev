@@ -8,32 +8,149 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Modal,
+  Image,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
+import { useCartStore } from '../src/stores/cartStore';
+import { useOrderStore } from '../src/stores/orderStore';
+import { API_BASE_URL } from '../src/config/api';
 
 export default function CheckoutScreen() {
   const router = useRouter();
+  const { items, getSubtotal, clearCart } = useCartStore();
+  const { addOrder } = useOrderStore();
 
   const [selectedAddressId, setSelectedAddressId] = useState(1);
-  const [selectedPayment, setSelectedPayment] = useState<'CARD' | 'UPI' | 'NET_BANKING' | 'COD'>('UPI');
+  const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY_UPI' | 'RAZORPAY_CARD' | 'RAZORPAY_NETBANKING' | 'COD'>('RAZORPAY_UPI');
   const [loading, setLoading] = useState(false);
+  const [razorpayModalVisible, setRazorpayModalVisible] = useState(false);
+  const [activePaymentStep, setActivePaymentStep] = useState<'SELECT' | 'PROCESSING' | 'SUCCESS'>('SELECT');
 
-  const handlePlaceOrder = async () => {
-    setLoading(true);
-    // Simulate real backend checkout initiation and Razorpay order response
-    setTimeout(() => {
-      setLoading(false);
-      // Navigate to order confirmation screen with reference ID
-      router.replace({
-        pathname: '/order-confirmation',
-        params: {
-          orderNumber: 'SC123456',
-          orderDate: '12 May 2024',
-          orderAmount: '5,697',
-        },
+  const subtotal = getSubtotal();
+  const shipping = subtotal > 1500 || subtotal === 0 ? 0 : 99;
+  const totalAmount = subtotal + shipping;
+
+  const handlePlaceOrder = () => {
+    if (items.length === 0) {
+      Alert.alert('Empty Cart', 'Your cart is empty. Please add items before checking out.');
+      return;
+    }
+
+    if (selectedPayment === 'COD') {
+      // Cash on Delivery direct confirmation
+      setLoading(true);
+      setTimeout(() => {
+        setLoading(false);
+        const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
+        const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        
+        // Save to live order history store
+        addOrder({
+          id: Date.now(),
+          orderNumber: '#' + orderNum,
+          date: dateStr,
+          status: 'Processing',
+          statusColor: '#d97706',
+          totalAmount: totalAmount,
+          paymentMethod: 'Cash on Delivery',
+          trackingId: 'TRK' + Math.floor(10000000 + Math.random() * 90000000),
+          carrier: 'Delhivery Express',
+          deliveryAddress: {
+            name: 'Priya Sharma',
+            street: '123, Green Park, Indiranagar',
+            cityStatePin: 'Bangalore, Karnataka - 560038',
+            phone: '+91 98765 43210',
+          },
+          items: items.map((i) => ({
+            name: i.name || (i as any).product?.name || 'Dress Item',
+            size: i.size,
+            price: i.price || (i as any).product?.price || 0,
+            quantity: i.quantity,
+            imageUrl: i.imageUrl || (i as any).product?.primaryImageUrl || ((i as any).product?.images && (i as any).product?.images[0]?.imageUrl),
+          })),
+        });
+
+        clearCart();
+        router.replace({
+          pathname: '/order-confirmation',
+          params: {
+            orderNumber: '#' + orderNum,
+            orderDate: dateStr,
+            orderAmount: totalAmount.toString(),
+            paymentMethod: 'Cash on Delivery',
+          },
+        });
+      }, 500);
+    } else {
+      // Direct redirection to the live Razorpay Gateway page in device browser
+      const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
+      const razorpayGatewayUrl = `${API_BASE_URL}/payment-gateway/pay?amount=${totalAmount}&orderNumber=${orderNum}&name=Priya%20Sharma&phone=9876543210`;
+
+      Linking.openURL(razorpayGatewayUrl).catch(() => {
+        // Fallback to in-app sheet if deep link cannot open external browser
+        setRazorpayModalVisible(true);
+        setActivePaymentStep('SELECT');
       });
-    }, 1200);
+    }
+  };
+
+  const handleSimulateRazorpayPayment = (success: boolean) => {
+    setActivePaymentStep('PROCESSING');
+
+    setTimeout(() => {
+      if (success) {
+        setActivePaymentStep('SUCCESS');
+        setTimeout(() => {
+          setRazorpayModalVisible(false);
+          const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
+          const rzpPaymentId = 'pay_' + Math.random().toString(36).substring(2, 12);
+          const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+          addOrder({
+            id: Date.now(),
+            orderNumber: '#' + orderNum,
+            date: dateStr,
+            status: 'Processing',
+            statusColor: '#d97706',
+            totalAmount: totalAmount,
+            paymentMethod: 'Razorpay (' + (selectedPayment === 'RAZORPAY_UPI' ? 'UPI' : 'Card') + ')',
+            trackingId: 'RZP' + Math.floor(10000000 + Math.random() * 90000000),
+            carrier: 'BlueDart Express',
+            deliveryAddress: {
+              name: 'Priya Sharma',
+              street: '123, Green Park, Indiranagar',
+              cityStatePin: 'Bangalore, Karnataka - 560038',
+              phone: '+91 98765 43210',
+            },
+            items: items.map((i) => ({
+              name: i.name || (i as any).product?.name || 'Dress Item',
+              size: i.size,
+              price: i.price || (i as any).product?.price || 0,
+              quantity: i.quantity,
+              imageUrl: i.imageUrl || (i as any).product?.primaryImageUrl || ((i as any).product?.images && (i as any).product?.images[0]?.imageUrl),
+            })),
+          });
+
+          clearCart();
+          router.replace({
+            pathname: '/order-confirmation',
+            params: {
+              orderNumber: '#' + orderNum,
+              orderDate: dateStr,
+              orderAmount: totalAmount.toString(),
+              paymentMethod: 'Razorpay (' + (selectedPayment === 'RAZORPAY_UPI' ? 'UPI' : 'Card') + ')',
+              transactionId: rzpPaymentId,
+            },
+          });
+        }, 1200);
+      } else {
+        setRazorpayModalVisible(false);
+        Alert.alert('Payment Cancelled', 'Razorpay transaction was not completed. Please try again.');
+      }
+    }, 1500);
   };
 
   return (
@@ -46,13 +163,10 @@ export default function CheckoutScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* 1. Delivery Address Section */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>1. Delivery Address</Text>
-          <TouchableOpacity>
-            <Text style={styles.addNewLink}>+ Add New</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Selected Address Card */}
@@ -65,43 +179,27 @@ export default function CheckoutScreen() {
               {selectedAddressId === 1 && <View style={styles.radioInner} />}
             </View>
             <View style={styles.addressInfo}>
-              <Text style={styles.recipientName}>Priya Sharma</Text>
-              <Text style={styles.addressLine}>123, Green Park, Bangalore</Text>
-              <Text style={styles.addressLine}>Karnataka - 560001</Text>
-              <Text style={styles.phoneText}>9876543210</Text>
-            </View>
-            <TouchableOpacity style={styles.editBtn}>
-              <Text style={styles.editText}>Edit</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-
-        {/* Secondary Address Card */}
-        <TouchableOpacity
-          style={[styles.addressCard, selectedAddressId === 2 && styles.addressCardActive]}
-          onPress={() => setSelectedAddressId(2)}
-        >
-          <View style={styles.addressTop}>
-            <View style={styles.radioCircle}>
-              {selectedAddressId === 2 && <View style={styles.radioInner} />}
-            </View>
-            <View style={styles.addressInfo}>
-              <Text style={styles.recipientName}>Office</Text>
-              <Text style={styles.addressLine}>ABC Tech Park, Whitefield</Text>
-              <Text style={styles.addressLine}>Bangalore - 560066</Text>
-              <Text style={styles.phoneText}>9123456780</Text>
+              <Text style={styles.recipientName}>Home &bull; Priya Sharma</Text>
+              <Text style={styles.addressLine}>Plot 42, Jubilee Hills, Road No. 10</Text>
+              <Text style={styles.addressLine}>Hyderabad, Telangana - 500033</Text>
+              <Text style={styles.phoneText}>📞 +91 98765 43210</Text>
             </View>
           </View>
         </TouchableOpacity>
 
         {/* 2. Payment Method Section */}
-        <Text style={[styles.sectionTitle, { marginTop: spacing.xl }]}>2. Payment Method</Text>
+        <View style={[styles.sectionHeader, { marginTop: spacing.lg }]}>
+          <Text style={styles.sectionTitle}>2. Payment Gateway</Text>
+          <View style={styles.securedBadge}>
+            <Text style={styles.securedText}>🔒 Razorpay Secured</Text>
+          </View>
+        </View>
 
         {[
-          { key: 'CARD', label: 'Credit / Debit Card', icon: '💳' },
-          { key: 'UPI', label: 'UPI (GPay, PhonePe, Paytm, etc.)', icon: '📱' },
-          { key: 'NET_BANKING', label: 'Net Banking', icon: '🏦' },
-          { key: 'COD', label: 'Cash on Delivery', icon: '💵' },
+          { key: 'RAZORPAY_UPI', label: 'UPI (Google Pay, PhonePe, Paytm)', icon: '📱', desc: 'Instant 0% fee checkout' },
+          { key: 'RAZORPAY_CARD', label: 'Credit / Debit Cards', icon: '💳', desc: 'Visa, MasterCard, RuPay' },
+          { key: 'RAZORPAY_NETBANKING', label: 'Net Banking', icon: '🏦', desc: 'All Indian major banks' },
+          { key: 'COD', label: 'Cash on Delivery (COD)', icon: '💵', desc: 'Pay when your dress arrives' },
         ].map((method) => (
           <TouchableOpacity
             key={method.key}
@@ -111,26 +209,53 @@ export default function CheckoutScreen() {
             <View style={styles.radioCircle}>
               {selectedPayment === method.key && <View style={styles.radioInner} />}
             </View>
-            <Text style={{ fontSize: 20 }}>{method.icon}</Text>
-            <Text style={styles.paymentLabel}>{method.label}</Text>
+            <Text style={{ fontSize: 24, marginHorizontal: 8 }}>{method.icon}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.paymentLabel}>{method.label}</Text>
+              <Text style={styles.paymentDesc}>{method.desc}</Text>
+            </View>
           </TouchableOpacity>
         ))}
 
         {/* Order Summary Mini Preview */}
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryTitle}>Order Summary (3 items)</Text>
-          <View style={styles.thumbnailsRow}>
-            <View style={styles.miniThumb}><Text style={{ fontSize: 20 }}>👗</Text></View>
-            <View style={styles.miniThumb}><Text style={{ fontSize: 20 }}>👧</Text></View>
-            <View style={styles.miniThumb}><Text style={{ fontSize: 20 }}>🌸</Text></View>
-            <View style={{ flex: 1 }} />
-            <Text style={styles.summaryTotal}>₹ 5,697</Text>
+          <Text style={styles.summaryTitle}>Order Summary ({items.length} {items.length === 1 ? 'item' : 'items'})</Text>
+          <View style={styles.summaryItemsList}>
+            {items.map((i) => (
+              <View key={i.id} style={styles.summaryRow}>
+                <Text style={styles.summaryItemText} numberOfLines={1}>
+                  {i.name} ({i.size}) × {i.quantity}
+                </Text>
+                <Text style={styles.summaryItemPrice}>₹{i.price * i.quantity}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.summaryDivider} />
+
+          <View style={styles.billRow}>
+            <Text style={styles.billLabel}>Subtotal</Text>
+            <Text style={styles.billVal}>₹{subtotal}</Text>
+          </View>
+          <View style={styles.billRow}>
+            <Text style={styles.billLabel}>Shipping</Text>
+            <Text style={shipping === 0 ? styles.billFree : styles.billVal}>
+              {shipping === 0 ? 'FREE' : `₹${shipping}`}
+            </Text>
+          </View>
+          <View style={[styles.billRow, { marginTop: 6 }]}>
+            <Text style={styles.totalLabel}>Total Payable</Text>
+            <Text style={styles.totalVal}>₹{totalAmount}</Text>
           </View>
         </View>
       </ScrollView>
 
       {/* Sticky Bottom Place Order CTA */}
       <View style={styles.footer}>
+        <View>
+          <Text style={{ fontSize: 11, color: colors.secondaryText }}>Amount to pay</Text>
+          <Text style={styles.footerPrice}>₹{totalAmount}</Text>
+        </View>
         <TouchableOpacity
           style={styles.placeOrderBtn}
           activeOpacity={0.9}
@@ -140,10 +265,88 @@ export default function CheckoutScreen() {
           {loading ? (
             <ActivityIndicator color={colors.white} />
           ) : (
-            <Text style={styles.placeOrderText}>Place Order</Text>
+            <Text style={styles.placeOrderText}>
+              {selectedPayment === 'COD' ? 'Confirm Order' : 'Pay with Razorpay →'}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Razorpay Standard Payment Modal */}
+      <Modal
+        visible={razorpayModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRazorpayModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.rzpModal}>
+            {/* Razorpay Header */}
+            <View style={styles.rzpHeader}>
+              <View>
+                <Text style={styles.rzpMerchantTitle}>Southcolours Fashion</Text>
+                <Text style={styles.rzpSub}>Order Total: ₹{totalAmount}</Text>
+              </View>
+              <View style={styles.rzpLogo}>
+                <Text style={{ fontSize: 12, fontWeight: '900', color: '#0284c7' }}>Razorpay</Text>
+              </View>
+            </View>
+
+            {activePaymentStep === 'SELECT' && (
+              <View style={styles.rzpBody}>
+                <Text style={styles.rzpPrompt}>Choose payment method to complete payment:</Text>
+
+                <TouchableOpacity
+                  style={styles.rzpOption}
+                  onPress={() => handleSimulateRazorpayPayment(true)}
+                >
+                  <Text style={{ fontSize: 22 }}>📱</Text>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.rzpOptionTitle}>Google Pay / PhonePe / Paytm</Text>
+                    <Text style={styles.rzpOptionSub}>Instant UPI Payment</Text>
+                  </View>
+                  <Text style={styles.rzpPayBadge}>PAY ₹{totalAmount}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.rzpOption}
+                  onPress={() => handleSimulateRazorpayPayment(true)}
+                >
+                  <Text style={{ fontSize: 22 }}>💳</Text>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.rzpOptionTitle}>Card / NetBanking</Text>
+                    <Text style={styles.rzpOptionSub}>Visa, MasterCard, HDFC, SBI, ICICI</Text>
+                  </View>
+                  <Text style={styles.rzpPayBadge}>PAY ₹{totalAmount}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.rzpCancel}
+                  onPress={() => handleSimulateRazorpayPayment(false)}
+                >
+                  <Text style={styles.rzpCancelText}>Cancel Payment</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {activePaymentStep === 'PROCESSING' && (
+              <View style={[styles.rzpBody, { alignItems: 'center', paddingVertical: 40 }]}>
+                <ActivityIndicator size="large" color="#0284c7" />
+                <Text style={styles.processingTitle}>Authorizing with Razorpay...</Text>
+                <Text style={styles.processingSub}>Please do not press back or refresh.</Text>
+              </View>
+            )}
+
+            {activePaymentStep === 'SUCCESS' && (
+              <View style={[styles.rzpBody, { alignItems: 'center', paddingVertical: 30 }]}>
+                <Text style={{ fontSize: 48, marginBottom: 10 }}>✅</Text>
+                <Text style={styles.successTitle}>Payment Verified!</Text>
+                <Text style={styles.processingSub}>Confirming your Southcolours order...</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -151,7 +354,7 @@ export default function CheckoutScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F8FAFC',
   },
   header: {
     flexDirection: 'row',
@@ -161,6 +364,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.white,
   },
   backBtn: {
     padding: spacing.xs,
@@ -171,25 +375,32 @@ const styles = StyleSheet.create({
     color: colors.primaryText,
   },
   content: {
-    padding: spacing.lg,
-    paddingBottom: 100,
+    padding: spacing.md,
+    paddingBottom: 110,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.primaryText,
     marginBottom: spacing.sm,
   },
-  addNewLink: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.primaryDeep,
+  sectionTitle: {
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  securedBadge: {
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+  },
+  securedText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#059669',
   },
   addressCard: {
     backgroundColor: colors.white,
@@ -201,12 +412,11 @@ const styles = StyleSheet.create({
   },
   addressCardActive: {
     borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: '#FFF5F8',
   },
   addressTop: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing.md,
   },
   radioCircle: {
     width: 20,
@@ -226,6 +436,7 @@ const styles = StyleSheet.create({
   },
   addressInfo: {
     flex: 1,
+    marginLeft: spacing.sm,
   },
   recipientName: {
     fontSize: typography.fontSizes.sm,
@@ -240,66 +451,96 @@ const styles = StyleSheet.create({
   },
   phoneText: {
     fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semiBold,
     color: colors.primaryText,
     marginTop: 4,
-    fontWeight: typography.fontWeights.medium,
-  },
-  editBtn: {
-    padding: spacing.xs,
-  },
-  editText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.primaryDeep,
-    fontWeight: typography.fontWeights.semiBold,
   },
   paymentOption: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.white,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     padding: spacing.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: spacing.md,
   },
   paymentOptionActive: {
     borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: '#FFF5F8',
   },
   paymentLabel: {
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium,
+    fontWeight: typography.fontWeights.semiBold,
     color: colors.primaryText,
+  },
+  paymentDesc: {
+    fontSize: 11,
+    color: colors.mutedText,
+    marginTop: 1,
   },
   summaryBox: {
     backgroundColor: colors.white,
     borderRadius: radii.lg,
     padding: spacing.md,
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
   summaryTitle: {
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semiBold,
+    fontWeight: typography.fontWeights.bold,
     color: colors.primaryText,
     marginBottom: spacing.sm,
   },
-  thumbnailsRow: {
+  summaryItemsList: {
+    gap: 6,
+  },
+  summaryRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
   },
-  miniThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+  summaryItemText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.secondaryText,
+    flex: 1,
+    marginRight: 8,
   },
-  summaryTotal: {
+  summaryItemPrice: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: spacing.sm,
+  },
+  billRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 2,
+  },
+  billLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.secondaryText,
+  },
+  billVal: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semiBold,
+    color: colors.primaryText,
+  },
+  billFree: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
+    color: '#16a34a',
+  },
+  totalLabel: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+  },
+  totalVal: {
     fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.bold,
     color: colors.primaryDeep,
@@ -309,20 +550,129 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: spacing.lg,
     backgroundColor: colors.white,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  footerPrice: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryDeep,
   },
   placeOrderBtn: {
+    flex: 1,
     backgroundColor: colors.primary,
-    paddingVertical: spacing.lg,
+    paddingVertical: 13,
     borderRadius: radii.full,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   placeOrderText: {
     color: colors.white,
-    fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.bold,
+    fontSize: typography.fontSizes.sm,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  rzpModal: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    overflow: 'hidden',
+  },
+  rzpHeader: {
+    backgroundColor: '#0c4a6e',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  rzpMerchantTitle: {
+    color: colors.white,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  rzpSub: {
+    color: '#bae6fd',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  rzpLogo: {
+    backgroundColor: colors.white,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+  },
+  rzpBody: {
+    padding: spacing.lg,
+  },
+  rzpPrompt: {
+    fontSize: 13,
+    color: colors.secondaryText,
+    marginBottom: spacing.md,
+  },
+  rzpOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: radii.lg,
+    marginBottom: spacing.sm,
+    backgroundColor: '#f8fafc',
+  },
+  rzpOptionTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+  },
+  rzpOptionSub: {
+    fontSize: 11,
+    color: colors.secondaryText,
+    marginTop: 2,
+  },
+  rzpPayBadge: {
+    backgroundColor: '#0284c7',
+    color: colors.white,
+    fontWeight: 'bold',
+    fontSize: 11,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.sm,
+  },
+  rzpCancel: {
+    marginTop: spacing.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  rzpCancelText: {
+    color: colors.mutedText,
+    fontSize: 12,
+  },
+  processingTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.primaryText,
+    marginTop: spacing.md,
+  },
+  processingSub: {
+    fontSize: 12,
+    color: colors.secondaryText,
+    marginTop: 4,
+  },
+  successTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#16a34a',
   },
 });

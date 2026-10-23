@@ -1,21 +1,16 @@
-# Build Stage
-FROM eclipse-temurin:21-jdk-jammy AS builder
+# Stage 1: Build the Spring Boot application using Maven and OpenJDK 21
+FROM maven:3.9.6-eclipse-temurin-21-alpine AS build
 WORKDIR /app
 COPY pom.xml .
-COPY .mvn .mvn
-COPY src src
-RUN apt-get update && apt-get install -y maven && mvn clean package -DskipTests
+COPY src ./src
+RUN mvn clean package -DskipTests
 
-# Runtime Stage
-FROM eclipse-temurin:21-jre-jammy
+# Stage 2: Minimal Java runtime
+FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-RUN addgroup --system spring && adduser --system spring --ingroup spring
-USER spring:spring
+COPY --from=build /app/target/*.jar app.jar
 
-COPY --from=builder /app/target/*.jar app.jar
-
-ENV SERVER_PORT=8080 \
-    JAVA_OPTS="-Xms512m -Xmx1024m -XX:+UseG1GC"
-
+ENV PORT=8080
 EXPOSE 8080
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+
+ENTRYPOINT ["java", "-Dserver.port=${PORT}", "-jar", "app.jar"]

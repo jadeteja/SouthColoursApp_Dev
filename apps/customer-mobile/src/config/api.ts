@@ -14,5 +14,8 @@ const getDevServerIp = () => {
 // Permanent 24/7 Cloud Backend deployed on Render
 const CLOUD_PUBLIC_URL = 'https://southcolours-backend.onrender.com/api/v1';
 
+// Prioritize environment variable if set, otherwise use live cloud backend URL
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || CLOUD_PUBLIC_URL;
+  (process.env.EXPO_PUBLIC_API_URL && process.env.EXPO_PUBLIC_API_URL.trim() !== '')
+    ? process.env.EXPO_PUBLIC_API_URL
+    : CLOUD_PUBLIC_URL;

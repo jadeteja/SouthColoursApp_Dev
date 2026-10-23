@@ -12,11 +12,19 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://southcolours-backend.onrender.com/api/v1",
+        "EXPO_PUBLIC_ADMIN_API_URL": "https://southcolours-backend.onrender.com/api/v1"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://southcolours-backend.onrender.com/api/v1",
+        "EXPO_PUBLIC_ADMIN_API_URL": "https://southcolours-backend.onrender.com/api/v1"
       }
     }
   },

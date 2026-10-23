@@ -25,15 +25,20 @@ const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight |
 // Category specific icon helper
 const getCategoryIcon = (categoryName: string): string => {
   const lower = (categoryName || '').toLowerCase();
-  if (lower.includes('frock')) return '👗'; // Frocks
-  if (lower.includes('crop top')) return '👚'; // Lehenga Crop Top Blouse
-  if (lower.includes('lehenga')) return '✨'; // Lehenga Blouse / Ethnic
-  if (lower.includes('kurta') || lower.includes('dhoti')) return '🥻'; // Kurta Dhoti
-  if (lower.includes('mother') || lower.includes('daughter')) return '👩‍👧'; // Mother and Daughter Combo
-  if (lower.includes('brother') || lower.includes('sister')) return '👫'; // Brother and Sister Combo
-  if (lower.includes('family')) return '👨‍👩‍👧‍👦'; // Family Combo
-  if (lower.includes('offer') || lower.includes('sale')) return '🏷️'; // Offer Dresses
-  return '👗';
+  if (lower.includes('girl')) return '👧';
+  if (lower.includes('boy')) return '👦';
+  if (lower.includes('baby') || lower.includes('infant')) return '👶';
+  if (lower.includes('ethnic') || lower.includes('traditional')) return '✨';
+  if (lower.includes('frock') || lower.includes('dress')) return '👗';
+  if (lower.includes('top') || lower.includes('t-shirt') || lower.includes('shirt')) return '👚';
+  if (lower.includes('bottom') || lower.includes('pant') || lower.includes('skirt') || lower.includes('dhoti')) return '👖';
+  if (lower.includes('new') || lower.includes('arrival')) return '🌟';
+  if (lower.includes('lehenga')) return '🥻';
+  if (lower.includes('mother') || lower.includes('daughter')) return '👩‍👧';
+  if (lower.includes('brother') || lower.includes('sister')) return '👫';
+  if (lower.includes('family')) return '👨‍👩‍👧‍👦';
+  if (lower.includes('offer') || lower.includes('sale')) return '🏷️';
+  return '🛍️';
 };
 
 export default function HomeScreen() {

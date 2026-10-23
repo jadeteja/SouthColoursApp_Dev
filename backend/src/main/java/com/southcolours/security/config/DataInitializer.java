@@ -90,54 +90,8 @@ public class DataInitializer implements CommandLineRunner {
             log.info("Default promotional banners initialized.");
         }
 
-        // 4. Seed Beautiful Catalog Products if count <= 1
-        if (productRepository.count() <= 1) {
-            List<Category> allCats = categoryRepository.findAll();
-            Category frocksCat = allCats.stream().filter(c -> c.getName().toLowerCase().contains("frock")).findFirst().orElse(allCats.isEmpty() ? null : allCats.get(0));
-            Category lehengaCat = allCats.stream().filter(c -> c.getName().toLowerCase().contains("lehenga")).findFirst().orElse(frocksCat);
-            Category kurtaCat = allCats.stream().filter(c -> c.getName().toLowerCase().contains("kurta")).findFirst().orElse(frocksCat);
-            Category comboCat = allCats.stream().filter(c -> c.getName().toLowerCase().contains("combo")).findFirst().orElse(frocksCat);
-
-            if (frocksCat != null) {
-                seedProduct("Pink Embroidered Silk Lehenga", "pink-embroidered-silk-lehenga",
-                        "Intricate zari embroidered festive silk lehenga choli set with dupatta.",
-                        new BigDecimal("2999"), new BigDecimal("1999"), lehengaCat,
-                        "https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?auto=format&fit=crop&w=600&q=80",
-                        true, true);
-
-                seedProduct("Sunshine Yellow Floral Anarkali Dress", "sunshine-yellow-floral-anarkali",
-                        "Delightful cheerful flared pure cotton anarkali gown for festive ceremonies.",
-                        new BigDecimal("2499"), new BigDecimal("1799"), frocksCat,
-                        "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=600&q=80",
-                        true, true);
-
-                seedProduct("Classic Royal Blue Kurta Dhoti Set", "classic-royal-blue-kurta-dhoti",
-                        "Traditional festive kurta pyjama with jacquard border and soft inner lining.",
-                        new BigDecimal("1999"), new BigDecimal("1499"), kurtaCat,
-                        "https://images.unsplash.com/photo-1503919545889-aef636e10ad4?auto=format&fit=crop&w=600&q=80",
-                        true, false);
-
-                seedProduct("Peach Blossom Party Frock", "peach-blossom-party-frock",
-                        "Layered tulle party frock with soft satin waistband and floral brooch.",
-                        new BigDecimal("1899"), new BigDecimal("1299"), frocksCat,
-                        "https://images.unsplash.com/photo-1518831959646-742c3a14ebf7?auto=format&fit=crop&w=600&q=80",
-                        true, true);
-
-                seedProduct("Emerald Green Banarasi Crop Top Set", "emerald-green-banarasi-crop-top",
-                        "Premium south silk banarasi crop top paired with pleated ethnic skirt.",
-                        new BigDecimal("3299"), new BigDecimal("2399"), lehengaCat,
-                        "https://images.unsplash.com/photo-1622290291468-a28f7a7dc6a8?auto=format&fit=crop&w=600&q=80",
-                        true, true);
-
-                seedProduct("Mother & Daughter Twining Combo Dress", "mother-daughter-twining-combo",
-                        "Exclusive festive matching ethnic gown set crafted for mother and daughter celebrations.",
-                        new BigDecimal("4999"), new BigDecimal("3899"), comboCat,
-                        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80",
-                        true, true);
-
-                log.info("Full collection of dress products initialized successfully in database.");
-            }
-        }
+        // 4. Products can be added via Admin Dashboard / Admin App
+        // Automatic test product seeding disabled to maintain clean catalog
     }
 
     private void seedProduct(String name, String slug, String desc, BigDecimal basePrice, BigDecimal discountPrice,

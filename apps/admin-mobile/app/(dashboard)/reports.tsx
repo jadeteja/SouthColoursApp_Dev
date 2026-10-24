@@ -9,6 +9,7 @@ import {
   StatusBar as RNStatusBar,
   ActivityIndicator,
   RefreshControl,
+  FlatList,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
@@ -17,11 +18,12 @@ import { useAdminAuthStore } from '../../src/stores/adminAuthStore';
 
 const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
 
-interface ReportMetrics {
+interface DashboardMetrics {
   totalOrders: number;
   totalSales: number;
   newCustomers: number;
   totalProducts: number;
+  pendingOrders: number;
   salesOverview?: { dateLabel: string; amount: number }[];
   topCategories?: { categoryName: string; percentage: number; color: string }[];
 }
@@ -31,14 +33,20 @@ export default function AdminReportsScreen() {
   const [activeTab, setActiveTab] = useState<'Sales' | 'Orders' | 'Customers' | 'Products'>('Sales');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [metrics, setMetrics] = useState<ReportMetrics>({
+
+  const [metrics, setMetrics] = useState<DashboardMetrics>({
     totalOrders: 0,
     totalSales: 0,
     newCustomers: 0,
     totalProducts: 0,
+    pendingOrders: 0,
     salesOverview: [],
     topCategories: [],
   });
+
+  const [ordersList, setOrdersList] = useState<any[]>([]);
+  const [customersList, setCustomersList] = useState<any[]>([]);
+  const [productsList, setProductsList] = useState<any[]>([]);
 
   const fetchReportsData = async () => {
     try {
@@ -48,13 +56,35 @@ export default function AdminReportsScreen() {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const res = await fetch(`${API_BASE_URL}/admin/dashboard`, { headers });
-      const json = await res.json();
-      if (json.success && json.data) {
-        setMetrics(json.data);
+      // Fetch overview metrics
+      const [dashRes, ordersRes, custRes, prodRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/admin/dashboard`, { headers }),
+        fetch(`${API_BASE_URL}/admin/orders`, { headers }),
+        fetch(`${API_BASE_URL}/admin/customers`, { headers }),
+        fetch(`${API_BASE_URL}/admin/products?size=50`, { headers }),
+      ]);
+
+      const [dashJson, ordersJson, custJson, prodJson] = await Promise.all([
+        dashRes.json(),
+        ordersRes.json(),
+        custRes.json(),
+        prodRes.json(),
+      ]);
+
+      if (dashJson.success && dashJson.data) {
+        setMetrics(dashJson.data);
+      }
+      if (ordersJson.success && Array.isArray(ordersJson.data)) {
+        setOrdersList(ordersJson.data);
+      }
+      if (custJson.success && Array.isArray(custJson.data)) {
+        setCustomersList(custJson.data);
+      }
+      if (prodJson.success && prodJson.data?.content) {
+        setProductsList(prodJson.data.content);
       }
     } catch (e) {
-      console.warn('Failed to fetch reports data:', e);
+      console.warn('Failed to fetch detailed reports data:', e);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -114,92 +144,233 @@ export default function AdminReportsScreen() {
           </View>
         ) : (
           <>
-            {/* Sales Summary 4-Box Metric Card */}
-            <View style={styles.summaryCard}>
-              <Text style={styles.sectionTitle}>
-                {activeTab === 'Sales' && 'Sales Summary'}
-                {activeTab === 'Orders' && 'Orders Analytics'}
-                {activeTab === 'Customers' && 'Customer Base'}
-                {activeTab === 'Products' && 'Product Inventory'}
-              </Text>
-              <View style={styles.metricGrid}>
-                <View style={styles.metricBox}>
-                  <Text style={{ fontSize: 20 }}>💰</Text>
-                  <View>
-                    <Text style={styles.metricLabel}>Total Sales</Text>
-                    <Text style={styles.metricValue}>
-                      ₹ {Number(metrics.totalSales || 0).toLocaleString('en-IN')}
-                    </Text>
+            {/* TAB 1: SALES */}
+            {activeTab === 'Sales' && (
+              <View style={styles.tabContent}>
+                <View style={styles.summaryCard}>
+                  <Text style={styles.sectionTitle}>Sales Summary</Text>
+                  <View style={styles.metricGrid}>
+                    <View style={styles.metricBox}>
+                      <Text style={{ fontSize: 20 }}>💰</Text>
+                      <View>
+                        <Text style={styles.metricLabel}>Total Sales</Text>
+                        <Text style={styles.metricValue}>
+                          ₹ {Number(metrics.totalSales || 0).toLocaleString('en-IN')}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.metricBox}>
+                      <Text style={{ fontSize: 20 }}>🏷️</Text>
+                      <View>
+                        <Text style={styles.metricLabel}>Avg. Order Value</Text>
+                        <Text style={styles.metricValue}>
+                          ₹ {avgOrderValue.toLocaleString('en-IN')}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.metricBox}>
+                      <Text style={{ fontSize: 20 }}>🛍️</Text>
+                      <View>
+                        <Text style={styles.metricLabel}>Total Orders</Text>
+                        <Text style={styles.metricValue}>{metrics.totalOrders}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.metricBox}>
+                      <Text style={{ fontSize: 20 }}>👥</Text>
+                      <View>
+                        <Text style={styles.metricLabel}>Customers</Text>
+                        <Text style={styles.metricValue}>{metrics.newCustomers}</Text>
+                      </View>
+                    </View>
                   </View>
                 </View>
-                <View style={styles.metricBox}>
-                  <Text style={{ fontSize: 20 }}>🛍️</Text>
-                  <View>
-                    <Text style={styles.metricLabel}>Total Orders</Text>
-                    <Text style={styles.metricValue}>{metrics.totalOrders}</Text>
-                  </View>
-                </View>
-                <View style={styles.metricBox}>
-                  <Text style={{ fontSize: 20 }}>🏷️</Text>
-                  <View>
-                    <Text style={styles.metricLabel}>Avg. Order Value</Text>
-                    <Text style={styles.metricValue}>
-                      ₹ {avgOrderValue.toLocaleString('en-IN')}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.metricBox}>
-                  <Text style={{ fontSize: 20 }}>👥</Text>
-                  <View>
-                    <Text style={styles.metricLabel}>Customers</Text>
-                    <Text style={styles.metricValue}>{metrics.newCustomers}</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
 
-            {/* Sales Trend / Performance Section */}
-            {metrics.salesOverview && metrics.salesOverview.length > 0 ? (
-              <View style={styles.chartCard}>
-                <Text style={styles.sectionTitle}>Sales Trend</Text>
-                <View style={styles.chartPlaceholder}>
-                  {metrics.salesOverview.map((item, idx) => (
-                    <Text key={idx} style={styles.chartY}>
-                      {item.dateLabel}: ₹ {Number(item.amount).toLocaleString('en-IN')}
+                {metrics.salesOverview && metrics.salesOverview.length > 0 ? (
+                  <View style={styles.chartCard}>
+                    <Text style={styles.sectionTitle}>Sales Trend</Text>
+                    <View style={styles.chartPlaceholder}>
+                      {metrics.salesOverview.map((item, idx) => (
+                        <Text key={idx} style={styles.chartY}>
+                          {item.dateLabel}: ₹ {Number(item.amount).toLocaleString('en-IN')}
+                        </Text>
+                      ))}
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.emptyCard}>
+                    <Text style={{ fontSize: 32, marginBottom: spacing.xs }}>📊</Text>
+                    <Text style={styles.emptyTitle}>No Sales History Yet</Text>
+                    <Text style={styles.emptySubtitle}>
+                      Sales performance data will appear here automatically when customer purchases take place.
                     </Text>
-                  ))}
-                </View>
-              </View>
-            ) : (
-              <View style={styles.emptyCard}>
-                <Text style={{ fontSize: 32, marginBottom: spacing.xs }}>📊</Text>
-                <Text style={styles.emptyTitle}>No Sales History Yet</Text>
-                <Text style={styles.emptySubtitle}>
-                  Trend analytics will graph here automatically once customer orders are placed.
-                </Text>
+                  </View>
+                )}
               </View>
             )}
 
-            {/* Top Categories */}
-            {metrics.topCategories && metrics.topCategories.length > 0 ? (
-              <View style={styles.topSellingCard}>
-                <Text style={styles.sectionTitle}>Category Revenue Share</Text>
-                {metrics.topCategories.map((cat, idx) => (
-                  <View key={idx} style={styles.catRow}>
-                    <Text style={styles.catName}>{cat.categoryName}</Text>
-                    <View style={styles.progressBarBg}>
-                      <View
-                        style={[
-                          styles.progressBarFill,
-                          { width: `${cat.percentage}%`, backgroundColor: cat.color || colors.primary },
-                        ]}
-                      />
+            {/* TAB 2: ORDERS */}
+            {activeTab === 'Orders' && (
+              <View style={styles.tabContent}>
+                <View style={styles.summaryCard}>
+                  <Text style={styles.sectionTitle}>Orders Overview</Text>
+                  <View style={styles.metricGrid}>
+                    <View style={styles.metricBox}>
+                      <Text style={{ fontSize: 20 }}>📦</Text>
+                      <View>
+                        <Text style={styles.metricLabel}>Total Orders</Text>
+                        <Text style={styles.metricValue}>{metrics.totalOrders}</Text>
+                      </View>
                     </View>
-                    <Text style={styles.catPct}>{cat.percentage}%</Text>
+                    <View style={styles.metricBox}>
+                      <Text style={{ fontSize: 20 }}>⏳</Text>
+                      <View>
+                        <Text style={styles.metricLabel}>Pending Fulfillment</Text>
+                        <Text style={styles.metricValue}>{metrics.pendingOrders || 0}</Text>
+                      </View>
+                    </View>
                   </View>
-                ))}
+                </View>
+
+                {ordersList.length > 0 ? (
+                  <View style={styles.tableCard}>
+                    <Text style={styles.sectionTitle}>Recent Orders Breakdown</Text>
+                    {ordersList.map((order, idx) => (
+                      <View key={idx} style={styles.orderRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.orderId}>{order.orderNumber || `#SC${order.id}`}</Text>
+                          <Text style={styles.orderCust}>{order.customerName || order.customerEmail || 'Customer'}</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.orderAmt}>₹ {Number(order.totalAmount || 0).toLocaleString('en-IN')}</Text>
+                          <Text style={[styles.orderStat, { color: colors.primary }]}>{order.status}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.emptyCard}>
+                    <Text style={{ fontSize: 32, marginBottom: spacing.xs }}>🛍️</Text>
+                    <Text style={styles.emptyTitle}>No Orders Yet</Text>
+                    <Text style={styles.emptySubtitle}>
+                      Customer orders and status breakdown will be listed here.
+                    </Text>
+                  </View>
+                )}
               </View>
-            ) : null}
+            )}
+
+            {/* TAB 3: CUSTOMERS */}
+            {activeTab === 'Customers' && (
+              <View style={styles.tabContent}>
+                <View style={styles.summaryCard}>
+                  <Text style={styles.sectionTitle}>Customer Analytics</Text>
+                  <View style={styles.metricGrid}>
+                    <View style={styles.metricBox}>
+                      <Text style={{ fontSize: 20 }}>👥</Text>
+                      <View>
+                        <Text style={styles.metricLabel}>Registered Users</Text>
+                        <Text style={styles.metricValue}>{metrics.newCustomers}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.metricBox}>
+                      <Text style={{ fontSize: 20 }}>⭐</Text>
+                      <View>
+                        <Text style={styles.metricLabel}>Active Shoppers</Text>
+                        <Text style={styles.metricValue}>{metrics.totalOrders > 0 ? metrics.newCustomers : 0}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {customersList.length > 0 ? (
+                  <View style={styles.tableCard}>
+                    <Text style={styles.sectionTitle}>Customer Accounts ({customersList.length})</Text>
+                    {customersList.map((cust, idx) => (
+                      <View key={idx} style={styles.custRow}>
+                        <View style={styles.avatarMini}>
+                          <Text style={styles.avatarMiniText}>
+                            {(cust.fullName || cust.email || 'U').charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.custName}>{cust.fullName || 'User'}</Text>
+                          <Text style={styles.custEmail}>{cust.email}</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.custDate}>{cust.registeredDate || 'Member'}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.emptyCard}>
+                    <Text style={{ fontSize: 32, marginBottom: spacing.xs }}>👥</Text>
+                    <Text style={styles.emptyTitle}>No Customers Yet</Text>
+                    <Text style={styles.emptySubtitle}>
+                      Registered customers will be listed here.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* TAB 4: PRODUCTS */}
+            {activeTab === 'Products' && (
+              <View style={styles.tabContent}>
+                <View style={styles.summaryCard}>
+                  <Text style={styles.sectionTitle}>Inventory & Catalog</Text>
+                  <View style={styles.metricGrid}>
+                    <View style={styles.metricBox}>
+                      <Text style={{ fontSize: 20 }}>👗</Text>
+                      <View>
+                        <Text style={styles.metricLabel}>Live Products</Text>
+                        <Text style={styles.metricValue}>{metrics.totalProducts}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.metricBox}>
+                      <Text style={{ fontSize: 20 }}>🏷️</Text>
+                      <View>
+                        <Text style={styles.metricLabel}>Categories</Text>
+                        <Text style={styles.metricValue}>8</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {productsList.length > 0 ? (
+                  <View style={styles.tableCard}>
+                    <Text style={styles.sectionTitle}>Catalog Breakdown ({productsList.length})</Text>
+                    {productsList.map((prod, idx) => (
+                      <View key={idx} style={styles.prodRow}>
+                        <View style={styles.prodThumb}>
+                          <Text style={{ fontSize: 20 }}>👗</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.prodName}>{prod.name}</Text>
+                          <Text style={styles.prodCat}>{prod.categoryName || 'Ethnic Wear'}</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.prodPrice}>
+                            ₹ {Number(prod.discountPrice || prod.basePrice || 0).toLocaleString('en-IN')}
+                          </Text>
+                          <Text style={[styles.prodBadge, { color: prod.isActive ? colors.success : colors.secondaryText }]}>
+                            {prod.isActive ? 'Active' : 'Inactive'}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.emptyCard}>
+                    <Text style={{ fontSize: 32, marginBottom: spacing.xs }}>👗</Text>
+                    <Text style={styles.emptyTitle}>No Products Found</Text>
+                    <Text style={styles.emptySubtitle}>
+                      Add products from the Products tab to see inventory metrics.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </>
         )}
       </ScrollView>
@@ -266,8 +437,10 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.md,
-    gap: spacing.md,
     paddingBottom: 40,
+  },
+  tabContent: {
+    gap: spacing.md,
   },
   centerContainer: {
     paddingVertical: 80,
@@ -355,39 +528,109 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: spacing.md,
   },
-  topSellingCard: {
+  tableCard: {
     backgroundColor: colors.white,
     borderRadius: radii.lg,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  catRow: {
+  orderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  catName: {
-    width: 100,
+  orderId: {
     fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
     color: colors.primaryText,
   },
-  progressBarBg: {
-    flex: 1,
-    height: 10,
-    backgroundColor: colors.primarySoft,
-    borderRadius: radii.full,
-    marginHorizontal: spacing.sm,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: radii.full,
-  },
-  catPct: {
-    width: 35,
-    fontSize: typography.fontSizes.xs,
+  orderCust: {
+    fontSize: 11,
     color: colors.secondaryText,
-    textAlign: 'right',
+    marginTop: 2,
+  },
+  orderAmt: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryDeep,
+  },
+  orderStat: {
+    fontSize: 10,
+    fontWeight: typography.fontWeights.medium,
+    marginTop: 2,
+  },
+  custRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.sm,
+  },
+  avatarMini: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarMiniText: {
+    fontSize: 12,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primary,
+  },
+  custName: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+  },
+  custEmail: {
+    fontSize: 10,
+    color: colors.secondaryText,
+    marginTop: 2,
+  },
+  custDate: {
+    fontSize: 10,
+    color: colors.mutedText,
+  },
+  prodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.sm,
+  },
+  prodThumb: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.sm,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  prodName: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+  },
+  prodCat: {
+    fontSize: 10,
+    color: colors.secondaryText,
+    marginTop: 2,
+  },
+  prodPrice: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryDeep,
+  },
+  prodBadge: {
+    fontSize: 10,
+    fontWeight: typography.fontWeights.medium,
+    marginTop: 2,
   },
 });

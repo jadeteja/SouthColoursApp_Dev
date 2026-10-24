@@ -44,6 +44,13 @@ const getCategoryIcon = (categoryName: string): string => {
   return '🛍️';
 };
 
+const LOCAL_CATEGORY_IMAGES: Record<string, any> = {
+  'frocks': require('../../assets/frocks.jpg'),
+  'lehenga-blouse': require('../../assets/lehenga-blouse.jpg'),
+  'brother-and-sister-combo': require('../../assets/brother-sister-combo.jpg'),
+  'kurta-dhoti': require('../../assets/kurta-dhoti.jpg'),
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const { isInWishlist, toggleItem } = useWishlistStore();
@@ -209,19 +216,15 @@ export default function HomeScreen() {
             </TouchableOpacity>
 
             {categories.map((cat) => {
-              let catImage = cat.imageUrl;
-              if (!catImage) {
-                const lower = cat.name.toLowerCase();
-                if (lower.includes('lehenga blouse')) {
-                  catImage = 'https://southcolours-backend.onrender.com/api/v1/media/625360bf-c8f9-4ed7-be98-33f0409b3ef1.jpg';
-                } else if (lower.includes('brother') && lower.includes('sister')) {
-                  catImage = 'https://southcolours-backend.onrender.com/api/v1/media/5a6d70af-dc16-46d5-9fd8-aaf380f9503a.jpg';
-                } else if (lower.includes('frock')) {
-                  catImage = 'https://southcolours-backend.onrender.com/api/v1/media/505748e6-06c0-4184-bf09-9a3a25b3ff0e.jpg';
-                } else if (lower.includes('kurta') || lower.includes('dhoti')) {
-                  catImage = 'https://southcolours-backend.onrender.com/api/v1/media/e9137186-4e2b-4c62-adb1-715a6f3b7b65.jpg';
-                }
-              }
+              const slugKey = (cat.slug || '').toLowerCase();
+              const localAsset = LOCAL_CATEGORY_IMAGES[slugKey] ||
+                (slugKey.includes('frock') ? LOCAL_CATEGORY_IMAGES['frocks'] : null) ||
+                (slugKey.includes('lehenga-blouse') || (slugKey.includes('lehenga') && !slugKey.includes('crop')) ? LOCAL_CATEGORY_IMAGES['lehenga-blouse'] : null) ||
+                (slugKey.includes('kurta') || slugKey.includes('dhoti') ? LOCAL_CATEGORY_IMAGES['kurta-dhoti'] : null) ||
+                (slugKey.includes('brother') || slugKey.includes('sister') ? LOCAL_CATEGORY_IMAGES['brother-and-sister-combo'] : null);
+
+              const remoteUrl = cat.imageUrl;
+
               return (
                 <TouchableOpacity
                   key={cat.id}
@@ -229,9 +232,15 @@ export default function HomeScreen() {
                   onPress={() => router.push(`/(tabs)/categories?categoryId=${cat.id}`)}
                 >
                   <View style={styles.categoryCircle}>
-                    {catImage ? (
+                    {localAsset ? (
                       <Image
-                        source={{ uri: catImage }}
+                        source={localAsset}
+                        style={styles.categoryImage}
+                        resizeMode="cover"
+                      />
+                    ) : remoteUrl ? (
+                      <Image
+                        source={{ uri: remoteUrl }}
                         style={styles.categoryImage}
                         resizeMode="cover"
                       />

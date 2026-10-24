@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,15 +8,72 @@ import {
   Dimensions,
   Platform,
   StatusBar as RNStatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
+import { API_BASE_URL } from '../../src/config/api';
+import { useAdminAuthStore } from '../../src/stores/adminAuthStore';
 
 const screenWidth = Dimensions.get('window').width;
 const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
 
+interface DashboardMetrics {
+  totalOrders: number;
+  totalSales: number;
+  newCustomers: number;
+  totalProducts: number;
+  pendingOrders: number;
+  salesOverview?: { dateLabel: string; amount: number }[];
+  topCategories?: { categoryName: string; percentage: number; color: string }[];
+}
+
 export default function AdminDashboardScreen() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [metrics, setMetrics] = useState<DashboardMetrics>({
+    totalOrders: 0,
+    totalSales: 0,
+    newCustomers: 0,
+    totalProducts: 0,
+    pendingOrders: 0,
+    salesOverview: [],
+    topCategories: [],
+  });
+
+  const fetchDashboardData = async () => {
+    try {
+      const token = useAdminAuthStore.getState().token;
+      const headers: Record<string, string> = {};
+      if (token && token !== 'mock_admin_token') {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/admin/dashboard`, { headers });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setMetrics(json.data);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch dashboard metrics:', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchDashboardData();
+    }, [])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchDashboardData();
+  };
 
   return (
     <View style={styles.safeArea}>
@@ -39,83 +96,111 @@ export default function AdminDashboardScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Date Filter Strip */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}
+      >
+        {/* Title */}
         <View style={styles.dashboardTitleRow}>
           <Text style={styles.dashboardHeading}>Dashboard</Text>
-          <View style={styles.dateBadge}>
-            <Text style={styles.dateBadgeText}>📅 01 May 2024 - 31 May 2024</Text>
-          </View>
+          <TouchableOpacity onPress={onRefresh} style={styles.refreshBtn}>
+            <Text style={styles.refreshBtnText}>🔄 Refresh</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* 2x2 Metric KPI Grid */}
-        <View style={styles.kpiGrid}>
-          <View style={styles.kpiCard}>
-            <Text style={{ fontSize: 24 }}>🛍️</Text>
-            <View>
-              <Text style={styles.kpiLabel}>Total Orders</Text>
-              <Text style={styles.kpiValue}>542</Text>
-            </View>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Loading live store metrics...</Text>
           </View>
-          <View style={styles.kpiCard}>
-            <Text style={{ fontSize: 24 }}>💰</Text>
-            <View>
-              <Text style={styles.kpiLabel}>Total Sales</Text>
-              <Text style={styles.kpiValue}>₹ 4,32,890</Text>
-            </View>
-          </View>
-          <View style={styles.kpiCard}>
-            <Text style={{ fontSize: 24 }}>👥</Text>
-            <View>
-              <Text style={styles.kpiLabel}>New Customers</Text>
-              <Text style={styles.kpiValue}>320</Text>
-            </View>
-          </View>
-          <View style={styles.kpiCard}>
-            <Text style={{ fontSize: 24 }}>👗</Text>
-            <View>
-              <Text style={styles.kpiLabel}>Products</Text>
-              <Text style={styles.kpiValue}>248</Text>
-            </View>
-          </View>
-        </View>
+        ) : (
+          <>
+            {/* 2x2 Metric KPI Grid */}
+            <View style={styles.kpiGrid}>
+              <TouchableOpacity
+                style={styles.kpiCard}
+                activeOpacity={0.8}
+                onPress={() => router.push('/(dashboard)/orders')}
+              >
+                <Text style={{ fontSize: 24 }}>🛍️</Text>
+                <View>
+                  <Text style={styles.kpiLabel}>Total Orders</Text>
+                  <Text style={styles.kpiValue}>{metrics.totalOrders}</Text>
+                </View>
+              </TouchableOpacity>
 
-        {/* Sales Overview Chart Card */}
-        <View style={styles.chartCard}>
-          <Text style={styles.chartTitle}>Sales Overview</Text>
-          <View style={styles.chartPlaceholder}>
-            <Text style={styles.chartY}>400K ─── 📈 ~~~~~~~~~~~~~~</Text>
-            <Text style={styles.chartY}>200K ─── 📈 ~~~~~~~~~~</Text>
-            <Text style={styles.chartY}>100K ─── 📈 ~~~~</Text>
-            <View style={styles.chartXRow}>
-              <Text style={styles.chartX}>1 May</Text>
-              <Text style={styles.chartX}>8 May</Text>
-              <Text style={styles.chartX}>15 May</Text>
-              <Text style={styles.chartX}>22 May</Text>
-              <Text style={styles.chartX}>31 May</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Top Categories Progress Bars */}
-        <View style={styles.chartCard}>
-          <Text style={styles.chartTitle}>Top Categories</Text>
-          {[
-            { name: 'Ethnic Wear', pct: 42, color: colors.primary },
-            { name: 'Dresses', pct: 28, color: '#FFA726' },
-            { name: 'Tops', pct: 15, color: '#29B6F6' },
-            { name: 'Bottoms', pct: 10, color: '#66BB6A' },
-            { name: 'Others', pct: 5, color: '#AB47BC' },
-          ].map((cat, idx) => (
-            <View key={idx} style={styles.catProgressRow}>
-              <Text style={styles.catNameCol}>{cat.name}</Text>
-              <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: `${cat.pct * 2}%`, backgroundColor: cat.color }]} />
+              <View style={styles.kpiCard}>
+                <Text style={{ fontSize: 24 }}>💰</Text>
+                <View>
+                  <Text style={styles.kpiLabel}>Total Sales</Text>
+                  <Text style={styles.kpiValue}>
+                    ₹ {Number(metrics.totalSales || 0).toLocaleString('en-IN')}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.catPctCol}>{cat.pct}%</Text>
+
+              <TouchableOpacity
+                style={styles.kpiCard}
+                activeOpacity={0.8}
+                onPress={() => router.push('/(dashboard)/customers')}
+              >
+                <Text style={{ fontSize: 24 }}>👥</Text>
+                <View>
+                  <Text style={styles.kpiLabel}>New Customers</Text>
+                  <Text style={styles.kpiValue}>{metrics.newCustomers}</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.kpiCard}
+                activeOpacity={0.8}
+                onPress={() => router.push('/(dashboard)/products')}
+              >
+                <Text style={{ fontSize: 24 }}>👗</Text>
+                <View>
+                  <Text style={styles.kpiLabel}>Products</Text>
+                  <Text style={styles.kpiValue}>{metrics.totalProducts}</Text>
+                </View>
+              </TouchableOpacity>
             </View>
-          ))}
-        </View>
+
+            {/* Sales Overview */}
+            {metrics.salesOverview && metrics.salesOverview.length > 0 ? (
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Sales Overview</Text>
+                <View style={styles.chartPlaceholder}>
+                  {metrics.salesOverview.map((pt, i) => (
+                    <Text key={i} style={styles.chartY}>
+                      {pt.dateLabel}: ₹ {Number(pt.amount).toLocaleString('en-IN')}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <View style={styles.emptyCard}>
+                <Text style={{ fontSize: 28, marginBottom: spacing.xs }}>📈</Text>
+                <Text style={styles.emptyTitle}>No Sales Activity Yet</Text>
+                <Text style={styles.emptySubtitle}>Sales overview will show here as orders start coming in.</Text>
+              </View>
+            )}
+
+            {/* Top Categories */}
+            {metrics.topCategories && metrics.topCategories.length > 0 ? (
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Top Categories</Text>
+                {metrics.topCategories.map((cat, idx) => (
+                  <View key={idx} style={styles.catProgressRow}>
+                    <Text style={styles.catNameCol}>{cat.categoryName}</Text>
+                    <View style={styles.progressBarBg}>
+                      <View style={[styles.progressBarFill, { width: `${cat.percentage}%`, backgroundColor: cat.color || colors.primary }]} />
+                    </View>
+                    <Text style={styles.catPctCol}>{cat.percentage}%</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -274,5 +359,46 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     color: colors.secondaryText,
     textAlign: 'right',
+  },
+  refreshBtn: {
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  refreshBtnText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: typography.fontWeights.medium,
+  },
+  loadingContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  loadingText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.secondaryText,
+  },
+  emptyCard: {
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyTitle: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.secondaryText,
+    textAlign: 'center',
   },
 });

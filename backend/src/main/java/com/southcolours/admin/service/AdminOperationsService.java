@@ -89,32 +89,15 @@ public class AdminOperationsService {
                 .filter(o -> "PENDING".equalsIgnoreCase(o.getStatus()) || "PROCESSING".equalsIgnoreCase(o.getStatus()))
                 .count();
 
-        // Sample sales overview timeline matching reference image 2
-        List<SalesChartPointDto> salesOverview = List.of(
-                SalesChartPointDto.builder().dateLabel("1 May").amount(new BigDecimal("150000")).build(),
-                SalesChartPointDto.builder().dateLabel("8 May").amount(new BigDecimal("180000")).build(),
-                SalesChartPointDto.builder().dateLabel("15 May").amount(new BigDecimal("240000")).build(),
-                SalesChartPointDto.builder().dateLabel("22 May").amount(new BigDecimal("210000")).build(),
-                SalesChartPointDto.builder().dateLabel("31 May").amount(new BigDecimal("432890")).build()
-        );
-
-        List<CategorySalesShareDto> topCategories = List.of(
-                CategorySalesShareDto.builder().categoryName("Ethnic Wear").percentage(42).color("#FF4081").build(),
-                CategorySalesShareDto.builder().categoryName("Dresses").percentage(28).color("#FFA726").build(),
-                CategorySalesShareDto.builder().categoryName("Tops").percentage(15).color("#29B6F6").build(),
-                CategorySalesShareDto.builder().categoryName("Bottoms").percentage(10).color("#66BB6A").build(),
-                CategorySalesShareDto.builder().categoryName("Others").percentage(5).color("#AB47BC").build()
-        );
-
         return AdminDashboardDto.builder()
-                .totalOrders(totalOrders > 0 ? totalOrders : 542)
-                .totalSales(totalSales.compareTo(BigDecimal.ZERO) > 0 ? totalSales : new BigDecimal("432890"))
-                .newCustomers(newCustomers > 0 ? newCustomers : 320)
-                .totalProducts(totalProducts > 0 ? totalProducts : 248)
-                .pendingOrders(pending > 0 ? pending : 18)
-                .lowStockProducts(5)
-                .salesOverview(salesOverview)
-                .topCategories(topCategories)
+                .totalOrders(totalOrders)
+                .totalSales(totalSales)
+                .newCustomers(newCustomers)
+                .totalProducts(totalProducts)
+                .pendingOrders(pending)
+                .lowStockProducts(0)
+                .salesOverview(List.of())
+                .topCategories(List.of())
                 .build();
     }
 

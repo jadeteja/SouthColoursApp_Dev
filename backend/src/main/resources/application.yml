@@ -46,6 +46,10 @@ app:
     key-id: ${RAZORPAY_KEY_ID:rzp_test_Tplnc0eTN5xGQt}
     key-secret: ${RAZORPAY_KEY_SECRET:Sxmrg4J0p52g2JOb9iGp3S9P}
     webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:southcolours}
+  cloudinary:
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:phzoirr6}
+    api-key: ${CLOUDINARY_API_KEY:472424285177527}
+    api-secret: ${CLOUDINARY_API_SECRET:iWJ2bVqOi9t-5SFfRc-sNBfuSQ0}
   cors:
     allowed-origins: "*"
 

@@ -1,9 +1,12 @@
 package com.southcolours.catalog.controller;
 
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
 import com.southcolours.security.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
@@ -28,12 +31,30 @@ import java.util.*;
 public class MediaUploadController {
 
     private final Path uploadDir = Paths.get("uploads").toAbsolutePath().normalize();
+    private final Cloudinary cloudinary;
 
-    public MediaUploadController() {
+    public MediaUploadController(
+            @Value("${app.cloudinary.cloud-name:phzoirr6}") String cloudName,
+            @Value("${app.cloudinary.api-key:472424285177527}") String apiKey,
+            @Value("${app.cloudinary.api-secret:iWJ2bVqOi9t-5SFfRc-sNBfuSQ0}") String apiSecret
+    ) {
         try {
             Files.createDirectories(uploadDir);
         } catch (IOException e) {
             log.error("Failed to create upload directory", e);
+        }
+
+        if (cloudName != null && !cloudName.isBlank() && apiKey != null && !apiKey.isBlank()) {
+            this.cloudinary = new Cloudinary(ObjectUtils.asMap(
+                    "cloud_name", cloudName,
+                    "api_key", apiKey,
+                    "api_secret", apiSecret,
+                    "secure", true
+            ));
+            log.info("Initialized Cloudinary uploader with cloud_name: {}", cloudName);
+        } else {
+            this.cloudinary = null;
+            log.warn("Cloudinary credentials not provided; falling back to local file storage");
         }
     }
 
@@ -56,6 +77,28 @@ public class MediaUploadController {
         for (MultipartFile file : allFiles) {
             if (file.isEmpty()) continue;
 
+            // 1. If Cloudinary is configured, upload directly to Cloudinary permanent cloud storage
+            if (this.cloudinary != null) {
+                try {
+                    Map<?, ?> uploadResult = cloudinary.uploader().upload(
+                            file.getBytes(),
+                            ObjectUtils.asMap(
+                                    "folder", "southcolours/products",
+                                    "resource_type", "auto"
+                            )
+                    );
+                    String secureUrl = (String) uploadResult.get("secure_url");
+                    if (secureUrl != null) {
+                        fileUrls.add(secureUrl);
+                        log.info("Successfully uploaded image to Cloudinary: {}", secureUrl);
+                        continue;
+                    }
+                } catch (Exception e) {
+                    log.error("Cloudinary upload failed, falling back to local file storage: {}", e.getMessage(), e);
+                }
+            }
+
+            // 2. Fallback to local storage if Cloudinary is unavailable or fails
             String originalName = file.getOriginalFilename();
             String extension = "";
             if (originalName != null && originalName.contains(".")) {

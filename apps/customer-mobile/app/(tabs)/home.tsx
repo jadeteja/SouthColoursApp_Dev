@@ -218,6 +218,8 @@ export default function HomeScreen() {
                   catImage = 'https://southcolours-backend.onrender.com/api/v1/media/5a6d70af-dc16-46d5-9fd8-aaf380f9503a.jpg';
                 } else if (lower.includes('frock')) {
                   catImage = 'https://southcolours-backend.onrender.com/api/v1/media/505748e6-06c0-4184-bf09-9a3a25b3ff0e.jpg';
+                } else if (lower.includes('kurta') || lower.includes('dhoti')) {
+                  catImage = 'https://southcolours-backend.onrender.com/api/v1/media/e9137186-4e2b-4c62-adb1-715a6f3b7b65.jpg';
                 }
               }
               return (

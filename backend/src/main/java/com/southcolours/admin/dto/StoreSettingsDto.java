@@ -26,4 +26,11 @@ public class StoreSettingsDto {
     private String razorpayKeyId;
     private String razorpayKeySecret;
     private boolean codEnabled;
+
+    // WhatsApp Notification Configuration
+    private boolean whatsappEnabled;
+    private String whatsappAdminPhone;
+    private String whatsappTemplate;
+    private String whatsappPhoneNumberId;
+    private String whatsappAccessToken;
 }

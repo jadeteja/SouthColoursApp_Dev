@@ -17,6 +17,8 @@ import com.southcolours.checkout.entity.OrderItem;
 import com.southcolours.checkout.entity.Payment;
 import com.southcolours.checkout.repository.OrderRepository;
 import com.southcolours.checkout.repository.PaymentRepository;
+import com.southcolours.admin.service.AdminOperationsService;
+import com.southcolours.notification.service.WhatsAppNotificationService;
 import com.southcolours.security.entity.User;
 import com.southcolours.security.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,8 @@ public class CheckoutService {
     private final PaymentRepository paymentRepository;
     private final ProductVariantRepository variantRepository;
     private final UserRepository userRepository;
+    private final AdminOperationsService adminOperationsService;
+    private final WhatsAppNotificationService whatsAppNotificationService;
 
     @Value("${app.razorpay.key-id:rzp_test_placeholder}")
     private String razorpayKeyId;
@@ -194,6 +198,25 @@ public class CheckoutService {
         cart.getItems().clear();
         cart.setAppliedCouponCode(null);
         cartRepository.save(cart);
+
+        // Send automated WhatsApp notification if enabled
+        if (adminOperationsService != null && adminOperationsService.isWhatsappEnabled()) {
+            try {
+                String customerPhone = order.getUser() != null ? order.getUser().getPhoneNumber() : null;
+                whatsAppNotificationService.sendOrderPlacedMessage(
+                        customerPhone,
+                        order.getUser() != null ? order.getUser().getFullName() : "Customer",
+                        order.getOrderNumber(),
+                        order.getTotalAmount() != null ? order.getTotalAmount().toString() : "0",
+                        adminOperationsService.getWhatsappAdminPhone(),
+                        adminOperationsService.getWhatsappTemplate(),
+                        adminOperationsService.getWhatsappPhoneNumberId(),
+                        adminOperationsService.getWhatsappAccessToken()
+                );
+            } catch (Exception e) {
+                log.error("Failed to process WhatsApp notification trigger for order {}: {}", order.getOrderNumber(), e.getMessage());
+            }
+        }
 
         return true;
     }

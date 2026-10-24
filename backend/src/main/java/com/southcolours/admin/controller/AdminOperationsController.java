@@ -67,4 +67,19 @@ public class AdminOperationsController {
         adminService.updatePaymentSettings(keyId, keySecret, cod);
         return ResponseEntity.ok(ApiResponse.success("SUCCESS", "Payment gateway credentials saved to backend"));
     }
+
+    @PostMapping("/whatsapp-settings")
+    @Operation(summary = "Save automated WhatsApp order confirmation template, credentials, and toggle status")
+    public ResponseEntity<ApiResponse<String>> saveWhatsAppSettings(
+            @RequestBody java.util.Map<String, Object> payload
+    ) {
+        boolean enabled = payload.get("whatsappEnabled") != null && Boolean.parseBoolean(payload.get("whatsappEnabled").toString());
+        String adminPhone = payload.get("whatsappAdminPhone") != null ? payload.get("whatsappAdminPhone").toString() : null;
+        String template = payload.get("whatsappTemplate") != null ? payload.get("whatsappTemplate").toString() : null;
+        String phoneId = payload.get("whatsappPhoneNumberId") != null ? payload.get("whatsappPhoneNumberId").toString() : null;
+        String token = payload.get("whatsappAccessToken") != null ? payload.get("whatsappAccessToken").toString() : null;
+
+        adminService.updateWhatsAppSettings(enabled, adminPhone, template, phoneId, token);
+        return ResponseEntity.ok(ApiResponse.success("SUCCESS", "WhatsApp notification settings updated successfully"));
+    }
 }

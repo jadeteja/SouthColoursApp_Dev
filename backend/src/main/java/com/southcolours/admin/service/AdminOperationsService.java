@@ -44,6 +44,34 @@ public class AdminOperationsService {
     private static String activeRazorpayKeySecret = null;
     private static boolean activeCodEnabled = true;
 
+    // WhatsApp Notification Configuration State
+    private static boolean whatsappEnabled = false;
+    private static String whatsappAdminPhone = "+91 9876543210";
+    private static String whatsappTemplate = "Hello {customerName}! 🌸\nYour Southcolours order #{orderNumber} for ₹{totalAmount} has been placed successfully!\nYou will shortly receive your order tracking ID from our admin at {adminPhone}.\nThank you for shopping with us!";
+    private static String whatsappPhoneNumberId = "";
+    private static String whatsappAccessToken = "";
+
+    public void updateWhatsAppSettings(
+            boolean enabled,
+            String adminPhone,
+            String template,
+            String phoneNumberId,
+            String accessToken
+    ) {
+        whatsappEnabled = enabled;
+        if (adminPhone != null && !adminPhone.isBlank()) whatsappAdminPhone = adminPhone.trim();
+        if (template != null && !template.isBlank()) whatsappTemplate = template.trim();
+        if (phoneNumberId != null) whatsappPhoneNumberId = phoneNumberId.trim();
+        if (accessToken != null) whatsappAccessToken = accessToken.trim();
+        log.info("WhatsApp settings updated: enabled={}, adminPhone={}, phoneNumberId={}", enabled, whatsappAdminPhone, whatsappPhoneNumberId);
+    }
+
+    public boolean isWhatsappEnabled() { return whatsappEnabled; }
+    public String getWhatsappAdminPhone() { return whatsappAdminPhone; }
+    public String getWhatsappTemplate() { return whatsappTemplate; }
+    public String getWhatsappPhoneNumberId() { return whatsappPhoneNumberId; }
+    public String getWhatsappAccessToken() { return whatsappAccessToken; }
+
     public void updatePaymentSettings(String keyId, String keySecret, boolean codEnabled) {
         if (keyId != null && !keyId.trim().isEmpty()) {
             activeRazorpayKeyId = keyId.trim();
@@ -144,6 +172,11 @@ public class AdminOperationsService {
                 .razorpayKeyId(getEffectiveRazorpayKeyId())
                 .razorpayKeySecret(getEffectiveRazorpayKeySecret())
                 .codEnabled(getEffectiveCodEnabled())
+                .whatsappEnabled(isWhatsappEnabled())
+                .whatsappAdminPhone(getWhatsappAdminPhone())
+                .whatsappTemplate(getWhatsappTemplate())
+                .whatsappPhoneNumberId(getWhatsappPhoneNumberId())
+                .whatsappAccessToken(getWhatsappAccessToken())
                 .build();
     }
 }

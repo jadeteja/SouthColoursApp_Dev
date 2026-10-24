@@ -10,6 +10,8 @@ import com.southcolours.checkout.service.CheckoutService;
 import com.southcolours.catalog.repository.ProductVariantRepository;
 import com.southcolours.security.entity.User;
 import com.southcolours.security.repository.UserRepository;
+import com.southcolours.admin.service.AdminOperationsService;
+import com.southcolours.notification.service.WhatsAppNotificationService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +38,10 @@ public class CheckoutServiceTest {
     private ProductVariantRepository variantRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private AdminOperationsService adminOperationsService;
+    @Mock
+    private WhatsAppNotificationService whatsAppNotificationService;
 
     @InjectMocks
     private CheckoutService checkoutService;

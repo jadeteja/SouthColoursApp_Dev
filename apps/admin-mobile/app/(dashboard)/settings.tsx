@@ -30,6 +30,11 @@ interface StoreConfig {
   razorpayKeyId: string;
   razorpayKeySecret: string;
   codEnabled: boolean;
+  whatsappEnabled: boolean;
+  whatsappAdminPhone: string;
+  whatsappTemplate: string;
+  whatsappPhoneNumberId: string;
+  whatsappAccessToken: string;
 }
 
 export default function AdminSettingsScreen() {
@@ -55,7 +60,17 @@ export default function AdminSettingsScreen() {
     razorpayKeyId: 'rzp_test_998877665544',
     razorpayKeySecret: '••••••••••••••••••••',
     codEnabled: true,
+    whatsappEnabled: false,
+    whatsappAdminPhone: '+91 98765 43210',
+    whatsappTemplate:
+      'Hello {customerName}! 🌸\nYour Southcolours order #{orderNumber} for ₹{totalAmount} has been placed successfully!\nYou will shortly receive your order tracking ID from our admin at {adminPhone}.\nThank you for shopping with us!',
+    whatsappPhoneNumberId: '',
+    whatsappAccessToken: '',
   });
+
+  // Additional form fields for WhatsApp Modal
+  const [tempField4, setTempField4] = useState('');
+  const [tempField5, setTempField5] = useState('');
 
   // Temp form state for modals
   const [tempField1, setTempField1] = useState('');
@@ -98,6 +113,12 @@ export default function AdminSettingsScreen() {
       setTempField1('');
       setTempField2('');
       setTempField3('');
+    } else if (type === 'WhatsApp Order Notifications') {
+      setTempField1(storeConfig.whatsappEnabled ? 'YES' : 'NO');
+      setTempField2(storeConfig.whatsappAdminPhone);
+      setTempField3(storeConfig.whatsappTemplate);
+      setTempField4(storeConfig.whatsappPhoneNumberId);
+      setTempField5(storeConfig.whatsappAccessToken);
     }
     setConfigModalVisible(true);
   };
@@ -158,6 +179,34 @@ export default function AdminSettingsScreen() {
         return;
       }
       Alert.alert('Success', 'Password changed successfully.');
+    } else if (configType === 'WhatsApp Order Notifications') {
+      const newEnabled = tempField1.trim().toUpperCase() === 'YES';
+      const newAdminPhone = tempField2.trim() || storeConfig.whatsappAdminPhone;
+      const newTemplate = tempField3.trim() || storeConfig.whatsappTemplate;
+      const newPhoneId = tempField4.trim();
+      const newToken = tempField5.trim();
+
+      fetch(`${API_BASE_URL}/admin/whatsapp-settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          whatsappEnabled: newEnabled,
+          whatsappAdminPhone: newAdminPhone,
+          whatsappTemplate: newTemplate,
+          whatsappPhoneNumberId: newPhoneId,
+          whatsappAccessToken: newToken,
+        }),
+      }).catch((e) => console.log('WhatsApp settings sync warning:', e));
+
+      setStoreConfig((prev) => ({
+        ...prev,
+        whatsappEnabled: newEnabled,
+        whatsappAdminPhone: newAdminPhone,
+        whatsappTemplate: newTemplate,
+        whatsappPhoneNumberId: newPhoneId,
+        whatsappAccessToken: newToken,
+      }));
+      Alert.alert('Saved', 'WhatsApp Order Notification template and settings updated successfully.');
     }
     setConfigModalVisible(false);
   };
@@ -331,6 +380,25 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.rowLabel}>Payment Settings (Razorpay)</Text>
                 <Text style={styles.rowSubLabel}>
                   Razorpay &bull; COD: {storeConfig.codEnabled ? 'Active' : 'Disabled'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.row}
+            activeOpacity={0.7}
+            onPress={() => openConfigModal('WhatsApp Order Notifications')}
+          >
+            <View style={styles.rowLeft}>
+              <View style={[styles.iconBox, { backgroundColor: '#dcfce7' }]}>
+                <Text style={{ fontSize: 18 }}>💬</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowLabel}>WhatsApp Order Notifications</Text>
+                <Text style={styles.rowSubLabel}>
+                  Status: {storeConfig.whatsappEnabled ? 'Active (Auto-send)' : 'Disabled'} &bull; Template configured
                 </Text>
               </View>
             </View>
@@ -582,6 +650,52 @@ export default function AdminSettingsScreen() {
                     onChangeText={setTempField3}
                     secureTextEntry
                     placeholder="Re-enter new password"
+                  />
+                </>
+              )}
+
+              {configType === 'WhatsApp Order Notifications' && (
+                <>
+                  <Text style={styles.inputLabel}>Automated WhatsApp Notification [YES / NO]</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={tempField1}
+                    onChangeText={setTempField1}
+                    placeholder="YES or NO"
+                    autoCapitalize="characters"
+                  />
+                  <Text style={styles.inputLabel}>Admin Mobile Number (Shown in message)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={tempField2}
+                    onChangeText={setTempField2}
+                    placeholder="+91 9876543210"
+                    keyboardType="phone-pad"
+                  />
+                  <Text style={styles.inputLabel}>WhatsApp Message Template</Text>
+                  <TextInput
+                    style={[styles.input, { height: 110, textAlignVertical: 'top' }]}
+                    value={tempField3}
+                    onChangeText={setTempField3}
+                    multiline
+                    placeholder="Enter template with {customerName}, {orderNumber}, {totalAmount}, {adminPhone}"
+                  />
+                  <Text style={styles.inputLabel}>Meta Phone Number ID (Optional/when ready)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={tempField4}
+                    onChangeText={setTempField4}
+                    placeholder="e.g. 109823471829384"
+                    autoCapitalize="none"
+                  />
+                  <Text style={styles.inputLabel}>Meta Permanent Access Token (Optional)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={tempField5}
+                    onChangeText={setTempField5}
+                    secureTextEntry
+                    placeholder="EAABw..."
+                    autoCapitalize="none"
                   />
                 </>
               )}

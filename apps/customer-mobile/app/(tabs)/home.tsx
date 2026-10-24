@@ -208,18 +208,29 @@ export default function HomeScreen() {
               <Text style={styles.categoryName} numberOfLines={1}>All</Text>
             </TouchableOpacity>
 
-            {categories.map((cat) => (
-              <TouchableOpacity
-                key={cat.id}
-                style={styles.categoryItem}
-                onPress={() => router.push(`/(tabs)/categories?categoryId=${cat.id}`)}
-              >
-                <View style={styles.categoryCircle}>
-                  <Text style={{ fontSize: 28 }}>{getCategoryIcon(cat.name)}</Text>
-                </View>
-                <Text style={styles.categoryName} numberOfLines={1}>{cat.name}</Text>
-              </TouchableOpacity>
-            ))}
+            {categories.map((cat) => {
+              const catImage = cat.imageUrl || (cat.name.toLowerCase().includes('lehenga blouse') ? 'https://southcolours-backend.onrender.com/api/v1/media/625360bf-c8f9-4ed7-be98-33f0409b3ef1.jpg' : null);
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={styles.categoryItem}
+                  onPress={() => router.push(`/(tabs)/categories?categoryId=${cat.id}`)}
+                >
+                  <View style={styles.categoryCircle}>
+                    {catImage ? (
+                      <Image
+                        source={{ uri: catImage }}
+                        style={styles.categoryImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={{ fontSize: 28 }}>{getCategoryIcon(cat.name)}</Text>
+                    )}
+                  </View>
+                  <Text style={styles.categoryName} numberOfLines={1}>{cat.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
@@ -420,6 +431,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  categoryImage: {
+    width: '100%',
+    height: '100%',
   },
   categoryName: {
     fontSize: typography.fontSizes.xs,

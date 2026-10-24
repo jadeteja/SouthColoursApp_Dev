@@ -216,6 +216,8 @@ export default function HomeScreen() {
                   catImage = 'https://southcolours-backend.onrender.com/api/v1/media/625360bf-c8f9-4ed7-be98-33f0409b3ef1.jpg';
                 } else if (lower.includes('brother') && lower.includes('sister')) {
                   catImage = 'https://southcolours-backend.onrender.com/api/v1/media/5a6d70af-dc16-46d5-9fd8-aaf380f9503a.jpg';
+                } else if (lower.includes('frock')) {
+                  catImage = 'https://southcolours-backend.onrender.com/api/v1/media/505748e6-06c0-4184-bf09-9a3a25b3ff0e.jpg';
                 }
               }
               return (

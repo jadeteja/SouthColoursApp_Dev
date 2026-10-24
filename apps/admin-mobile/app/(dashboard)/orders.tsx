@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,63 +8,92 @@ import {
   TouchableOpacity,
   Platform,
   StatusBar as RNStatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
+import { API_BASE_URL } from '../../src/config/api';
+import { useAdminAuthStore } from '../../src/stores/adminAuthStore';
 
 const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
+
+interface AdminOrderItem {
+  id: number;
+  orderNumber: string;
+  customerName?: string;
+  customerEmail?: string;
+  createdAt: string;
+  totalAmount: number;
+  status: string;
+}
 
 export default function AdminOrdersListScreen() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('All');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [orders, setOrders] = useState<AdminOrderItem[]>([]);
 
-  const orders = [
-    {
-      id: 1,
-      orderNumber: '#SC123456',
-      customer: 'Priya Sharma',
-      date: '12 May 2024',
-      amount: 5697,
-      status: 'Delivered',
-      color: colors.success,
-    },
-    {
-      id: 2,
-      orderNumber: '#SC123455',
-      customer: 'Rohan Gupta',
-      date: '11 May 2024',
-      amount: 1899,
-      status: 'Shipped',
-      color: '#2196F3',
-    },
-    {
-      id: 3,
-      orderNumber: '#SC123454',
-      customer: 'Sneha Patil',
-      date: '10 May 2024',
-      amount: 2499,
-      status: 'Processing',
-      color: colors.warning,
-    },
-    {
-      id: 4,
-      orderNumber: '#SC123453',
-      customer: 'Amit Verma',
-      date: '09 May 2024',
-      amount: 999,
-      status: 'Pending',
-      color: '#9E9E9E',
-    },
-  ];
+  const fetchOrders = async () => {
+    try {
+      const token = useAdminAuthStore.getState().token;
+      const headers: Record<string, string> = {};
+      if (token && token !== 'mock_admin_token') {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/admin/orders`, { headers });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setOrders(json.data);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch admin orders:', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrders();
+    }, [])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchOrders();
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status?.toUpperCase()) {
+      case 'DELIVERED':
+        return colors.success;
+      case 'SHIPPED':
+        return '#2196F3';
+      case 'PROCESSING':
+        return colors.warning;
+      case 'PENDING':
+        return '#FFA726';
+      case 'CANCELLED':
+        return colors.error;
+      default:
+        return colors.secondaryText;
+    }
+  };
 
   const filteredOrders = orders.filter((o) => {
-    const matchesTab = activeTab === 'All' || o.status.toLowerCase() === activeTab.toLowerCase();
+    const matchesTab =
+      activeTab === 'All' || o.status?.toUpperCase() === activeTab.toUpperCase();
     const matchesSearch =
       searchQuery.trim() === '' ||
-      o.orderNumber.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-      o.customer.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-      o.amount.toString().includes(searchQuery.trim());
+      (o.orderNumber && o.orderNumber.toLowerCase().includes(searchQuery.trim().toLowerCase())) ||
+      (o.customerName && o.customerName.toLowerCase().includes(searchQuery.trim().toLowerCase())) ||
+      (o.customerEmail && o.customerEmail.toLowerCase().includes(searchQuery.trim().toLowerCase())) ||
+      (o.totalAmount && o.totalAmount.toString().includes(searchQuery.trim()));
     return matchesTab && matchesSearch;
   });
 
@@ -72,8 +101,8 @@ export default function AdminOrdersListScreen() {
     <View style={styles.safeArea}>
       <View style={styles.header}>
         <Text style={styles.brandTitle}>Orders ({filteredOrders.length})</Text>
-        <TouchableOpacity style={styles.dateFilter}>
-          <Text style={styles.dateFilterText}>📅 01 May 2024 - 31 May 2024</Text>
+        <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh}>
+          <Text style={styles.refreshBtnText}>🔄 Refresh</Text>
         </TouchableOpacity>
       </View>
 
@@ -106,28 +135,56 @@ export default function AdminOrdersListScreen() {
       </View>
 
       {/* Order List */}
-      <FlatList
-        data={filteredOrders}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.orderCard}
-            onPress={() => router.push(`/(dashboard)/order-details?id=${item.id}`)}
-          >
-            <View style={styles.thumb}><Text style={{ fontSize: 26 }}>👗</Text></View>
-            <View style={styles.infoCol}>
-              <Text style={styles.orderNum}>{item.orderNumber}</Text>
-              <Text style={styles.orderDate}>{item.date}</Text>
-              <Text style={styles.customerName}>{item.customer}</Text>
-              <Text style={styles.amount}>₹ {item.amount}</Text>
+      {loading ? (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading orders from database...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredOrders}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={{ fontSize: 40, marginBottom: spacing.sm }}>🛍️</Text>
+              <Text style={styles.emptyTitle}>No Orders Yet</Text>
+              <Text style={styles.emptySubtitle}>
+                {searchQuery || activeTab !== 'All'
+                  ? 'No orders match your search or filter.'
+                  : 'Customer orders will appear here in real time once placed.'}
+              </Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: colors.primarySoft }]}>
-              <Text style={[styles.statusText, { color: item.color }]}>{item.status}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-      />
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.orderCard}
+              activeOpacity={0.7}
+              onPress={() => router.push(`/(dashboard)/order-details?id=${item.id}`)}
+            >
+              <View style={styles.thumb}>
+                <Text style={{ fontSize: 26 }}>👗</Text>
+              </View>
+              <View style={styles.infoCol}>
+                <Text style={styles.orderNum}>{item.orderNumber || `#SC${item.id}`}</Text>
+                <Text style={styles.orderDate}>{item.createdAt || 'Recent'}</Text>
+                <Text style={styles.customerName}>
+                  {item.customerName || item.customerEmail || 'Customer'}
+                </Text>
+                <Text style={styles.amount}>₹ {Number(item.totalAmount || 0).toLocaleString('en-IN')}</Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: colors.primarySoft }]}>
+                <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
+                  {item.status || 'PENDING'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        />
+      )}
     </View>
   );
 }
@@ -153,15 +210,16 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.bold,
     color: colors.primaryDeep,
   },
-  dateFilter: {
+  refreshBtn: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     backgroundColor: colors.primarySoft,
     borderRadius: radii.sm,
   },
-  dateFilterText: {
-    fontSize: 10,
-    color: colors.primaryText,
+  refreshBtnText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: typography.fontWeights.medium,
   },
   searchSection: {
     padding: spacing.md,
@@ -198,6 +256,34 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: colors.primary,
     fontWeight: typography.fontWeights.bold,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.xl,
+  },
+  loadingText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.secondaryText,
+  },
+  emptyContainer: {
+    paddingVertical: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  emptyTitle: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.secondaryText,
+    textAlign: 'center',
   },
   list: {
     padding: spacing.md,

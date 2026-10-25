@@ -31,7 +31,7 @@ const getCategoryIcon = (categoryName: string): string => {
   if (lower.includes('mother') || lower.includes('daughter')) return '👩‍👧';
   if (lower.includes('brother') || lower.includes('sister')) return '👫';
   if (lower.includes('family')) return '👨‍👩‍👧‍👦';
-  if (lower.includes('offer') || lower.includes('sale')) return '🏷️';
+  if (lower.includes('offer') || lower.includes('sale')) return '👗🏷️';
   return '👗';
 };
 

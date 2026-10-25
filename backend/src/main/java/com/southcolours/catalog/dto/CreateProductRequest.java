@@ -36,6 +36,7 @@ public class CreateProductRequest {
     private Boolean isFeatured = false;
     private Boolean isNewArrival = false;
     private Boolean isActive = true;
+    private String videoUrl;
 
     @NotEmpty(message = "At least one variant must be provided")
     private List<CreateVariantRequest> variants;

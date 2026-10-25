@@ -19,6 +19,7 @@ import { Category, Product, Banner } from '@southcolours/types';
 import { API_BASE_URL } from '../../src/config/api';
 import { useWishlistStore } from '../../src/stores/wishlistStore';
 import { useCartStore } from '../../src/stores/cartStore';
+import OfferCategoryCircle from '../../src/components/OfferCategoryCircle';
 
 const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
 
@@ -33,7 +34,7 @@ const getCategoryIcon = (categoryName: string): string => {
   if (lower.includes('mother') || lower.includes('daughter')) return '👩‍👧'; // Mother and Daughter Combo
   if (lower.includes('brother') || lower.includes('sister')) return '👫'; // Brother and Sister Combo
   if (lower.includes('family')) return '👨‍👩‍👧‍👦'; // Family Combo
-  if (lower.includes('offer') || lower.includes('sale')) return '🏷️'; // Offer Dresses
+  if (lower.includes('offer') || lower.includes('sale')) return '👗✨'; // Offer Dresses
   if (lower.includes('girl')) return '👧';
   if (lower.includes('boy')) return '👦';
   if (lower.includes('baby') || lower.includes('infant')) return '👶';
@@ -217,6 +218,7 @@ export default function HomeScreen() {
 
             {categories.map((cat) => {
               const slugKey = (cat.slug || '').toLowerCase();
+              const isOffer = slugKey.includes('offer') || (cat.name || '').toLowerCase().includes('offer');
               const localAsset = LOCAL_CATEGORY_IMAGES[slugKey] ||
                 (slugKey.includes('frock') ? LOCAL_CATEGORY_IMAGES['frocks'] : null) ||
                 (slugKey.includes('lehenga-blouse') || (slugKey.includes('lehenga') && !slugKey.includes('crop')) ? LOCAL_CATEGORY_IMAGES['lehenga-blouse'] : null) ||
@@ -231,24 +233,33 @@ export default function HomeScreen() {
                   style={styles.categoryItem}
                   onPress={() => router.push(`/(tabs)/categories?categoryId=${cat.id}`)}
                 >
-                  <View style={styles.categoryCircle}>
-                    {localAsset ? (
-                      <Image
-                        source={localAsset}
-                        style={styles.categoryImage}
-                        resizeMode="cover"
-                      />
-                    ) : remoteUrl ? (
-                      <Image
-                        source={{ uri: remoteUrl }}
-                        style={styles.categoryImage}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <Text style={{ fontSize: 28 }}>{getCategoryIcon(cat.name)}</Text>
-                    )}
-                  </View>
-                  <Text style={styles.categoryName} numberOfLines={1}>{cat.name}</Text>
+                  {isOffer ? (
+                    <OfferCategoryCircle size={64} />
+                  ) : (
+                    <View style={styles.categoryCircle}>
+                      {localAsset ? (
+                        <Image
+                          source={localAsset}
+                          style={styles.categoryImage}
+                          resizeMode="cover"
+                        />
+                      ) : remoteUrl ? (
+                        <Image
+                          source={{ uri: remoteUrl }}
+                          style={styles.categoryImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Text style={{ fontSize: 28 }}>{getCategoryIcon(cat.name)}</Text>
+                      )}
+                    </View>
+                  )}
+                  <Text
+                    style={[styles.categoryName, isOffer && styles.offerCategoryName]}
+                    numberOfLines={1}
+                  >
+                    {cat.name}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -463,6 +474,10 @@ const styles = StyleSheet.create({
     color: colors.primaryText,
     fontWeight: typography.fontWeights.medium,
     textAlign: 'center',
+  },
+  offerCategoryName: {
+    color: colors.primaryDeep,
+    fontWeight: typography.fontWeights.bold,
   },
   productsSection: {
     paddingHorizontal: spacing.lg,

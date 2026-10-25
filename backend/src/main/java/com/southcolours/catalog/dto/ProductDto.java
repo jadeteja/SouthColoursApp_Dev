@@ -31,6 +31,7 @@ public class ProductDto {
     private Boolean isActive;
     private Boolean isFeatured;
     private Boolean isNewArrival;
+    private String videoUrl;
     private String primaryImageUrl;
     private List<ProductImageDto> images;
     private List<ProductVariantDto> variants;

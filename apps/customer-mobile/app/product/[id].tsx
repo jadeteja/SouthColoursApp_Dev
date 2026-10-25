@@ -16,6 +16,7 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Video, ResizeMode } from 'expo-av';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
 import { API_BASE_URL } from '../../src/config/api';
 import { useWishlistStore } from '../../src/stores/wishlistStore';
@@ -35,6 +36,7 @@ interface ProductDetail {
   averageRating: number;
   reviewCount: number;
   primaryImageUrl?: string;
+  videoUrl?: string;
   images?: { id: number; imageUrl: string }[];
   variants?: {
     id: number;
@@ -66,6 +68,9 @@ export default function ProductDetailsScreen() {
   const [quantity, setQuantity] = useState(1);
   const isWishlisted = product ? isInWishlist(product.id) : false;
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isMuted, setIsMuted] = useState(true);
+  const videoRef = useRef<Video>(null);
 
   // Fullscreen Zoom & Size Chart Modals
   const [fullScreenModalVisible, setFullScreenModalVisible] = useState(false);
@@ -195,6 +200,11 @@ export default function ProductDetailsScreen() {
     fetchProduct();
   }, [id]);
 
+  const productThumbnail =
+    (product?.images && product.images.length > 0
+      ? product.images.find((img) => !/\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(img.imageUrl))?.imageUrl || product.images[0].imageUrl
+      : product?.primaryImageUrl) || '';
+
   const handleAddToCart = () => {
     if (!product) return;
     const finalSize = selectedSize || 'Standard';
@@ -204,7 +214,7 @@ export default function ProductDetailsScreen() {
       size: finalSize,
       price: product.discountPrice || product.basePrice,
       originalPrice: product.basePrice,
-      imageUrl: galleryImages[0] || product.primaryImageUrl,
+      imageUrl: productThumbnail,
       quantity,
     });
 
@@ -227,7 +237,7 @@ export default function ProductDetailsScreen() {
       size: finalSize,
       price: product.discountPrice || product.basePrice,
       originalPrice: product.basePrice,
-      imageUrl: galleryImages[0] || product.primaryImageUrl,
+      imageUrl: productThumbnail,
       quantity,
     });
     router.push('/(tabs)/cart');
@@ -242,12 +252,28 @@ export default function ProductDetailsScreen() {
     );
   }
 
-  const galleryImages =
+  const isVideoUrl = (url: string) => /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(url);
+  const rawImages =
     product?.images && product.images.length > 0
       ? product.images.map((img) => img.imageUrl)
       : product?.primaryImageUrl
       ? [product.primaryImageUrl]
       : [];
+
+  const imageUris = rawImages.filter((url) => !isVideoUrl(url));
+  const videoUris = [
+    ...rawImages.filter((url) => isVideoUrl(url)),
+    ...(product?.videoUrl ? [product.videoUrl] : []),
+  ];
+  const uniqueVideos = Array.from(new Set(videoUris.filter(Boolean)));
+
+  // Put product images first, and the product video in the LAST SLIDE
+  const mediaSlides: { type: 'image' | 'video'; uri: string }[] = [
+    ...imageUris.map((uri) => ({ type: 'image' as const, uri })),
+    ...uniqueVideos.map((uri) => ({ type: 'video' as const, uri })),
+  ];
+
+  const primaryCoverImage = imageUris[0] || product?.primaryImageUrl || '';
 
   const uniqueSizes = Array.from(
     new Set((product?.variants || []).map((v) => v.size).filter(Boolean))
@@ -272,7 +298,7 @@ export default function ProductDetailsScreen() {
                   name: product.name,
                   price: product.discountPrice || product.basePrice,
                   originalPrice: product.basePrice,
-                  imageUrl: galleryImages[0] || product.primaryImageUrl,
+                  imageUrl: primaryCoverImage,
                   rating: product.averageRating,
                   reviewCount: product.reviewCount,
                 });
@@ -294,8 +320,8 @@ export default function ProductDetailsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* Large Product Gallery Carousel - Tap to open Fullscreen Zoom */}
-        {galleryImages.length > 0 ? (
+        {/* Large Product Gallery Carousel - Images first, Video in Last Slide */}
+        {mediaSlides.length > 0 ? (
           <View style={styles.imageGallery}>
             <ScrollView
               horizontal
@@ -304,40 +330,112 @@ export default function ProductDetailsScreen() {
               onScroll={(e) => {
                 const offset = e.nativeEvent.contentOffset.x;
                 const index = Math.round(offset / SCREEN_WIDTH);
-                setActiveImageIndex(index);
+                if (index !== activeImageIndex) {
+                  setActiveImageIndex(index);
+                }
               }}
               scrollEventThrottle={16}
             >
-              {galleryImages.map((uri, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  activeOpacity={0.95}
-                  onPress={() => setFullScreenModalVisible(true)}
-                  style={{ width: SCREEN_WIDTH, height: 400 }}
-                >
-                  <Image source={{ uri }} style={styles.galleryImg} />
-                </TouchableOpacity>
+              {mediaSlides.map((item, idx) => (
+                <View key={idx} style={{ width: SCREEN_WIDTH, height: 400 }}>
+                  {item.type === 'video' ? (
+                    <View style={styles.videoContainer}>
+                      <Video
+                        ref={videoRef}
+                        source={{ uri: item.uri }}
+                        style={styles.videoPlayer}
+                        resizeMode={ResizeMode.CONTAIN}
+                        isLooping
+                        isMuted={isMuted}
+                        shouldPlay={activeImageIndex === idx && isPlaying}
+                        useNativeControls={false}
+                      />
+
+                      {/* Video Badge */}
+                      <View style={styles.videoBadge}>
+                        <Text style={{ fontSize: 12 }}>📹</Text>
+                        <Text style={styles.videoBadgeText}>Product Video</Text>
+                      </View>
+
+                      {/* Center Play button overlay if paused */}
+                      {!isPlaying && activeImageIndex === idx && (
+                        <TouchableOpacity
+                          style={styles.videoCenterPlayBtn}
+                          onPress={() => setIsPlaying(true)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={{ fontSize: 28, color: colors.white, marginLeft: 4 }}>▶</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* Video Quick Controls: Mute & Play/Pause */}
+                      <View style={styles.videoControlsOverlay}>
+                        <TouchableOpacity
+                          style={styles.videoControlBtn}
+                          onPress={() => setIsMuted((prev) => !prev)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={{ fontSize: 16 }}>{isMuted ? '🔇' : '🔊'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.videoControlBtn}
+                          onPress={() => setIsPlaying((prev) => !prev)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={{ fontSize: 16 }}>{isPlaying ? '⏸' : '▶'}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      activeOpacity={0.95}
+                      onPress={() => setFullScreenModalVisible(true)}
+                      style={{ width: SCREEN_WIDTH, height: 400 }}
+                    >
+                      <Image source={{ uri: item.uri }} style={styles.galleryImg} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               ))}
             </ScrollView>
 
-            {/* Tap to Zoom Pill */}
+            {/* Tap to Zoom or Fullscreen Pill */}
             <TouchableOpacity
               style={styles.zoomPill}
               onPress={() => setFullScreenModalVisible(true)}
               activeOpacity={0.8}
             >
-              <Text style={styles.zoomPillText}>🔍 Tap to zoom</Text>
+              <Text style={styles.zoomPillText}>
+                {mediaSlides[activeImageIndex]?.type === 'video'
+                  ? '⛶ Fullscreen Video'
+                  : '🔍 Tap to zoom'}
+              </Text>
             </TouchableOpacity>
 
-            {/* Carousel Dots */}
-            {galleryImages.length > 1 && (
+            {/* Carousel Dots - Last Slide Video Indicator */}
+            {mediaSlides.length > 1 && (
               <View style={styles.dotsRow}>
-                {galleryImages.map((_, idx) => (
-                  <View
-                    key={idx}
-                    style={[styles.dot, idx === activeImageIndex && styles.dotActive]}
-                  />
-                ))}
+                {mediaSlides.map((item, idx) => {
+                  const isActive = idx === activeImageIndex;
+                  const isVideo = item.type === 'video';
+                  return (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.dot,
+                        isActive && styles.dotActive,
+                        isVideo && styles.videoDot,
+                        isVideo && isActive && styles.videoDotActive,
+                      ]}
+                    >
+                      {isVideo ? (
+                        <Text style={[styles.videoDotIcon, isActive && { color: colors.white }]}>
+                          ▶
+                        </Text>
+                      ) : null}
+                    </View>
+                  );
+                })}
               </View>
             )}
           </View>
@@ -452,36 +550,46 @@ export default function ProductDetailsScreen() {
           <View style={styles.fullScreenHeader}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
               <Text style={styles.fullScreenIndex}>
-                {activeImageIndex + 1} / {galleryImages.length}
+                {activeImageIndex + 1} / {mediaSlides.length}
               </Text>
-              <Text style={styles.zoomLevelBadge}>{Math.round(zoomScale * 100)}%</Text>
+              {mediaSlides[activeImageIndex]?.type === 'video' ? (
+                <View style={[styles.zoomLevelBadge, { backgroundColor: colors.primaryDeep }]}>
+                  <Text style={{ color: colors.white, fontSize: 10, fontWeight: 'bold' }}>📹 Video</Text>
+                </View>
+              ) : (
+                <Text style={styles.zoomLevelBadge}>{Math.round(zoomScale * 100)}%</Text>
+              )}
             </View>
 
             {/* Zoom Control Buttons: Reset, Zoom Out, Zoom In, and Close */}
             <View style={styles.zoomButtonsRow}>
-              <TouchableOpacity
-                onPress={() => setManualZoom(Math.max(1, +(zoomScale - 0.5).toFixed(1)))}
-                style={styles.zoomCtrlBtn}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.zoomCtrlText}>−</Text>
-              </TouchableOpacity>
+              {mediaSlides[activeImageIndex]?.type !== 'video' && (
+                <>
+                  <TouchableOpacity
+                    onPress={() => setManualZoom(Math.max(1, +(zoomScale - 0.5).toFixed(1)))}
+                    style={styles.zoomCtrlBtn}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.zoomCtrlText}>−</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={resetZoom}
-                style={styles.zoomCtrlBtn}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.zoomCtrlText, { fontSize: 11 }]}>1x</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={resetZoom}
+                    style={styles.zoomCtrlBtn}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.zoomCtrlText, { fontSize: 11 }]}>1x</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={() => setManualZoom(Math.min(6, +(zoomScale + 0.5).toFixed(1)))}
-                style={styles.zoomCtrlBtn}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.zoomCtrlText}>+</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setManualZoom(Math.min(6, +(zoomScale + 0.5).toFixed(1)))}
+                    style={styles.zoomCtrlBtn}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.zoomCtrlText}>+</Text>
+                  </TouchableOpacity>
+                </>
+              )}
 
               <TouchableOpacity
                 onPress={() => {
@@ -495,34 +603,47 @@ export default function ProductDetailsScreen() {
             </View>
           </View>
 
-          {/* Pinch-to-zoom + Multi-directional Pan Gesture Area */}
-          <View style={styles.gestureContainer} {...panResponder.panHandlers}>
-            <Animated.View
-              style={[
-                styles.animatedImageWrapper,
-                {
-                  transform: [
-                    { scale: scale },
-                    { translateX: pan.x },
-                    { translateY: pan.y },
-                  ],
-                },
-              ]}
-            >
-              {galleryImages[activeImageIndex] && (
-                <Image
-                  source={{ uri: galleryImages[activeImageIndex] }}
-                  style={styles.zoomableImage}
-                />
-              )}
-            </Animated.View>
-          </View>
+          {/* Fullscreen Video Player or Pinch-to-zoom Image */}
+          {mediaSlides[activeImageIndex]?.type === 'video' ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+              <Video
+                source={{ uri: mediaSlides[activeImageIndex].uri }}
+                style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.72 }}
+                resizeMode={ResizeMode.CONTAIN}
+                useNativeControls
+                isLooping
+                shouldPlay
+              />
+            </View>
+          ) : (
+            <View style={styles.gestureContainer} {...panResponder.panHandlers}>
+              <Animated.View
+                style={[
+                  styles.animatedImageWrapper,
+                  {
+                    transform: [
+                      { scale: scale },
+                      { translateX: pan.x },
+                      { translateY: pan.y },
+                    ],
+                  },
+                ]}
+              >
+                {mediaSlides[activeImageIndex] && (
+                  <Image
+                    source={{ uri: mediaSlides[activeImageIndex].uri }}
+                    style={styles.zoomableImage}
+                  />
+                )}
+              </Animated.View>
+            </View>
+          )}
 
-          {/* Thumbnail Strip at Bottom if Multiple Images */}
-          {galleryImages.length > 1 && (
+          {/* Thumbnail Strip at Bottom if Multiple Slides */}
+          {mediaSlides.length > 1 && (
             <View style={styles.fullScreenThumbStrip}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingHorizontal: spacing.md }}>
-                {galleryImages.map((uri, idx) => (
+                {mediaSlides.map((slide, idx) => (
                   <TouchableOpacity
                     key={idx}
                     onPress={() => {
@@ -534,7 +655,13 @@ export default function ProductDetailsScreen() {
                       idx === activeImageIndex && styles.fullScreenThumbActive,
                     ]}
                   >
-                    <Image source={{ uri }} style={{ width: '100%', height: '100%', borderRadius: 4 }} />
+                    {slide.type === 'video' ? (
+                      <View style={{ width: '100%', height: '100%', backgroundColor: '#1E293B', justifyContent: 'center', alignItems: 'center', borderRadius: 4 }}>
+                        <Text style={{ fontSize: 13, color: colors.white }}>▶</Text>
+                      </View>
+                    ) : (
+                      <Image source={{ uri: slide.uri }} style={{ width: '100%', height: '100%', borderRadius: 4 }} />
+                    )}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -707,6 +834,83 @@ const styles = StyleSheet.create({
   dotActive: {
     width: 18,
     backgroundColor: colors.primaryDeep,
+  },
+  videoContainer: {
+    width: SCREEN_WIDTH,
+    height: 400,
+    backgroundColor: '#050505',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  videoPlayer: {
+    width: SCREEN_WIDTH,
+    height: 400,
+  },
+  videoBadge: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    gap: 4,
+    zIndex: 5,
+  },
+  videoBadgeText: {
+    color: colors.white,
+    fontSize: 11,
+    fontWeight: typography.fontWeights.semiBold,
+  },
+  videoCenterPlayBtn: {
+    position: 'absolute',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  videoControlsOverlay: {
+    position: 'absolute',
+    bottom: 24,
+    right: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    zIndex: 5,
+  },
+  videoControlBtn: {
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoDotActive: {
+    width: 20,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.primaryDeep,
+  },
+  videoDotIcon: {
+    fontSize: 7,
+    color: colors.white,
+    fontWeight: 'bold',
+    marginLeft: 1,
   },
   detailsCard: {
     padding: spacing.lg,

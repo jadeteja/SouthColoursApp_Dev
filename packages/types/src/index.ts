@@ -85,6 +85,7 @@ export interface Product {
   isActive: boolean;
   isFeatured: boolean;
   isNewArrival: boolean;
+  videoUrl?: string;
   images: ProductImage[];
   variants: ProductVariant[];
 }

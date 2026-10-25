@@ -42,6 +42,7 @@ export default function AddEditProductScreen() {
 
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [images, setImages] = useState<string[]>([]);
+  const [videoUrl, setVideoUrl] = useState('');
 
   // Modal selector states
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
@@ -77,9 +78,20 @@ export default function AddEditProductScreen() {
           }
 
           if (p.images && p.images.length > 0) {
-            setImages(p.images.map((img: any) => img.imageUrl));
+            const rawUrls = p.images.map((img: any) => img.imageUrl);
+            const isVid = (url: string) => /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(url);
+            const imgOnly = rawUrls.filter((u: string) => !isVid(u));
+            const vidFound = rawUrls.find((u: string) => isVid(u));
+            setImages(imgOnly);
+            if (vidFound && !p.videoUrl) {
+              setVideoUrl(vidFound);
+            }
           } else if (p.primaryImageUrl) {
             setImages([p.primaryImageUrl]);
+          }
+
+          if (p.videoUrl) {
+            setVideoUrl(p.videoUrl);
           }
         }
       } catch (e) {
@@ -168,6 +180,31 @@ export default function AddEditProductScreen() {
     setImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
+  const pickVideo = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Camera roll / media permissions are needed to choose a product video.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setVideoUrl(result.assets[0].uri);
+      }
+    } catch (err: any) {
+      Alert.alert('Video Selection Error', err?.message || 'Could not pick video.');
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert('Validation Error', 'Please enter a product name.');
@@ -253,6 +290,42 @@ export default function AddEditProductScreen() {
         }
       }
 
+      // 2b. Upload local video if selected
+      let finalVideoUrl = videoUrl.trim();
+      if (finalVideoUrl && !finalVideoUrl.startsWith('http')) {
+        try {
+          const videoFormData = new FormData();
+          const filename = finalVideoUrl.split('/').pop() || 'product_video.mp4';
+          const match = /\.(\w+)$/.exec(filename);
+          const type = match ? `video/${match[1]}` : 'video/mp4';
+          videoFormData.append('files', {
+            uri: Platform.OS === 'android' ? finalVideoUrl : finalVideoUrl.replace('file://', ''),
+            name: filename,
+            type,
+          } as any);
+
+          const uploadHeaders: Record<string, string> = {};
+          if (token && token !== 'mock_admin_token') {
+            uploadHeaders['Authorization'] = `Bearer ${token}`;
+          }
+
+          const vidResponse = await fetch(`${API_BASE_URL}/uploads`, {
+            method: 'POST',
+            headers: uploadHeaders,
+            body: videoFormData,
+          });
+
+          if (vidResponse.ok) {
+            const vidJson = await vidResponse.json();
+            if (vidJson.success && Array.isArray(vidJson.data) && vidJson.data.length > 0) {
+              finalVideoUrl = vidJson.data[0];
+            }
+          }
+        } catch (vidErr) {
+          console.warn('Video upload failed, keeping current URI:', vidErr);
+        }
+      }
+
       // 3. Find matching category ID from backend
       const matchedCat = categoryList.find(
         (c) => c.name.toLowerCase() === category.toLowerCase()
@@ -274,6 +347,11 @@ export default function AddEditProductScreen() {
 
       const parsedDiscountPrice = parseFloat(discountPrice);
 
+      // Append video URL to imageUrls so it is safely preserved across both backend versions
+      if (finalVideoUrl && !allImageUrls.includes(finalVideoUrl)) {
+        allImageUrls.push(finalVideoUrl);
+      }
+
       const requestPayload = {
         categoryId,
         name: name.trim(),
@@ -284,6 +362,7 @@ export default function AddEditProductScreen() {
         isFeatured: false,
         isNewArrival: true,
         isActive: true,
+        videoUrl: finalVideoUrl || null,
         variants,
         imageUrls: allImageUrls,
       };
@@ -469,6 +548,47 @@ export default function AddEditProductScreen() {
             </Text>
           </TouchableOpacity>
         </ScrollView>
+
+        {/* Product Video Section - Displays on the last slide */}
+        <Text style={styles.label}>Product Video (Shown on the last slide)</Text>
+        {videoUrl ? (
+          <View style={styles.videoPreviewCard}>
+            <View style={styles.videoPreviewLeft}>
+              <Text style={{ fontSize: 24 }}>📹</Text>
+              <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                <Text style={styles.videoFilename} numberOfLines={1}>
+                  {videoUrl.split('/').pop() || 'Video Selected'}
+                </Text>
+                <Text style={styles.videoSubtext}>
+                  Will appear on the last slide of the customer gallery
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.removeVideoBtn}
+              onPress={() => setVideoUrl('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.removeImgBtnText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
+            <TouchableOpacity style={styles.pickVideoBtn} onPress={pickVideo} activeOpacity={0.7}>
+              <Text style={{ fontSize: 18 }}>🎬</Text>
+              <Text style={styles.pickVideoBtnText}>Choose Video from Device</Text>
+            </TouchableOpacity>
+            <TextInput
+              style={[styles.input, { fontSize: 12, paddingVertical: 8, color: colors.primaryText }]}
+              placeholder="Or paste external video URL (.mp4 / streaming URL)"
+              placeholderTextColor={colors.mutedText}
+              value={videoUrl}
+              onChangeText={setVideoUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+        )}
 
         {/* Buttons */}
         <View style={styles.buttonRow}>
@@ -895,5 +1015,57 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.primaryDeep,
     fontWeight: typography.fontWeights.bold,
+  },
+  videoPreviewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  videoPreviewLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  videoFilename: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semiBold,
+    color: colors.primaryText,
+  },
+  videoSubtext: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.secondaryText,
+    marginTop: 2,
+  },
+  removeVideoBtn: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickVideoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.primaryDeep,
+    borderStyle: 'dashed',
+    borderRadius: radii.md,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.white,
+    gap: spacing.sm,
+  },
+  pickVideoBtnText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semiBold,
+    color: colors.primaryDeep,
   },
 });

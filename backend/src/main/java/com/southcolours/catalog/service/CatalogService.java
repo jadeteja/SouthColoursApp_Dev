@@ -125,6 +125,7 @@ public class CatalogService {
                 .isFeatured(Boolean.TRUE.equals(request.getIsFeatured()))
                 .isNewArrival(Boolean.TRUE.equals(request.getIsNewArrival()))
                 .isActive(Boolean.TRUE.equals(request.getIsActive()))
+                .videoUrl(request.getVideoUrl())
                 .build();
 
         // Add variants
@@ -184,6 +185,7 @@ public class CatalogService {
         if (request.getIsFeatured() != null) product.setIsFeatured(request.getIsFeatured());
         if (request.getIsNewArrival() != null) product.setIsNewArrival(request.getIsNewArrival());
         if (request.getIsActive() != null) product.setIsActive(request.getIsActive());
+        if (request.getVideoUrl() != null) product.setVideoUrl(request.getVideoUrl());
 
         // Update variants: update existing matching by size or add new
         if (request.getVariants() != null) {
@@ -312,6 +314,7 @@ public class CatalogService {
                 .isActive(product.getIsActive())
                 .isFeatured(product.getIsFeatured())
                 .isNewArrival(product.getIsNewArrival())
+                .videoUrl(product.getVideoUrl())
                 .primaryImageUrl(primaryImg)
                 .images(product.getImages().stream().map(img -> ProductImageDto.builder()
                         .id(img.getId())

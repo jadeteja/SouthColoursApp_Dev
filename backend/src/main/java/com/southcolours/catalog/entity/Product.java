@@ -67,6 +67,9 @@ public class Product {
     @Builder.Default
     private Boolean isNewArrival = false;
 
+    @Column(name = "video_url", length = 1000)
+    private String videoUrl;
+
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<ProductVariant> variants = new ArrayList<>();

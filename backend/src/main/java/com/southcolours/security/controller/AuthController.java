@@ -36,6 +36,20 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(response, "Login successful"));
     }
 
+    @PostMapping("/forgot-password")
+    @Operation(summary = "Request a 6-digit OTP code to reset password via email")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.forgotPassword(request);
+        return ResponseEntity.ok(ApiResponse.success(null, "Verification code sent to your email."));
+    }
+
+    @PostMapping("/reset-password")
+    @Operation(summary = "Reset password using received OTP code")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.success(null, "Password reset successfully. Please login with your new password."));
+    }
+
     @PostMapping("/google")
     @Operation(summary = "Sign in or sign up with Google OIDC identity")
     public ResponseEntity<ApiResponse<AuthResponse>> googleLogin(@Valid @RequestBody GoogleAuthRequest request) {

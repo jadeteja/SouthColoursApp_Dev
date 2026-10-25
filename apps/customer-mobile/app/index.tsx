@@ -28,13 +28,86 @@ export default function WelcomeAuthScreen() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
 
-  const [mode, setMode] = useState<'welcome' | 'login' | 'register'>('welcome');
+  const [mode, setMode] = useState<'welcome' | 'login' | 'register' | 'forgot-password'>('welcome');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Forgot password flow states
+  const [forgotStep, setForgotStep] = useState<1 | 2>(1);
+  const [resetOtp, setResetOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
+  const handleSendResetOtp = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    if (!email || !email.includes('@')) {
+      setErrorMessage('Please enter a valid email address');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      const resData = await response.json();
+      if (!response.ok || !resData.success) {
+        throw new Error(resData.message || 'Failed to send OTP');
+      }
+      setSuccessMessage('A 6-digit verification code has been sent to your email.');
+      setForgotStep(2);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error requesting password reset');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    if (!resetOtp || resetOtp.length !== 6) {
+      setErrorMessage('Please enter the 6-digit verification code');
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      setErrorMessage('New password must be at least 6 characters');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          otp: resetOtp.trim(),
+          newPassword,
+        }),
+      });
+      const resData = await response.json();
+      if (!response.ok || !resData.success) {
+        throw new Error(resData.message || 'Failed to reset password');
+      }
+      Alert.alert('Success', 'Password reset successfully! You can now log in.');
+      setForgotStep(1);
+      setResetOtp('');
+      setNewPassword('');
+      setPassword('');
+      setMode('login');
+      setSuccessMessage('Password reset successfully! Please login.');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error resetting password');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     setErrorMessage(null);
@@ -271,6 +344,22 @@ export default function WelcomeAuthScreen() {
               placeholderTextColor={colors.mutedText}
             />
 
+            {mode === 'login' && (
+              <TouchableOpacity
+                onPress={() => {
+                  setErrorMessage(null);
+                  setSuccessMessage(null);
+                  setForgotStep(1);
+                  setMode('forgot-password');
+                }}
+                style={{ alignSelf: 'flex-end', marginTop: 4, marginBottom: spacing.sm }}
+              >
+                <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>
+                  Forgot Password?
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={styles.primaryButton}
               onPress={mode === 'login' ? handleLogin : handleRegister}
@@ -302,6 +391,109 @@ export default function WelcomeAuthScreen() {
             >
               <Text style={{ color: colors.secondaryText, fontSize: typography.fontSizes.sm }}>
                 ← Back to Welcome
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {mode === 'forgot-password' && (
+          <View style={styles.formContainer}>
+            <Text style={styles.formHeading}>Reset Password</Text>
+            <Text style={{ color: colors.secondaryText, fontSize: 13, marginBottom: spacing.md }}>
+              {forgotStep === 1
+                ? 'Enter your registered email address to receive a 6-digit verification code.'
+                : `Enter the 6-digit code sent to ${email} and choose your new password.`}
+            </Text>
+
+            {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+            {successMessage && (
+              <Text style={{ color: '#16a34a', fontSize: 13, marginBottom: spacing.sm, textAlign: 'center' }}>
+                {successMessage}
+              </Text>
+            )}
+
+            {forgotStep === 1 ? (
+              <>
+                <Text style={styles.inputLabel}>Email Address</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="name@example.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholderTextColor={colors.mutedText}
+                />
+
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={handleSendResetOtp}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Send Verification Code</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.inputLabel}>6-Digit Verification Code</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="123456"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={resetOtp}
+                  onChangeText={setResetOtp}
+                  placeholderTextColor={colors.mutedText}
+                />
+
+                <Text style={styles.inputLabel}>New Password</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="At least 6 characters"
+                  secureTextEntry
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholderTextColor={colors.mutedText}
+                />
+
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={handleResetPassword}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Reset Password</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ marginTop: spacing.md, alignItems: 'center' }}
+                  onPress={handleSendResetOtp}
+                  disabled={loading}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>
+                    Didn't receive code? Resend
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            <TouchableOpacity
+              style={{ marginTop: spacing.lg, alignItems: 'center' }}
+              onPress={() => {
+                setErrorMessage(null);
+                setSuccessMessage(null);
+                setMode('login');
+              }}
+            >
+              <Text style={{ color: colors.secondaryText, fontSize: typography.fontSizes.sm }}>
+                ← Back to Login
               </Text>
             </TouchableOpacity>
           </View>

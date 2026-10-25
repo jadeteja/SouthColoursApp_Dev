@@ -1,10 +1,12 @@
 package com.southcolours.security.service;
 
 import com.southcolours.security.dto.*;
+import com.southcolours.security.entity.PasswordResetToken;
 import com.southcolours.security.entity.RefreshToken;
 import com.southcolours.security.entity.Role;
 import com.southcolours.security.entity.User;
 import com.southcolours.security.jwt.JwtService;
+import com.southcolours.security.repository.PasswordResetTokenRepository;
 import com.southcolours.security.repository.RefreshTokenRepository;
 import com.southcolours.security.repository.RoleRepository;
 import com.southcolours.security.repository.UserRepository;
@@ -22,7 +24,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -34,8 +39,10 @@ public class AuthService implements UserDetailsService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final EmailService emailService;
 
     @Value("${app.jwt.refresh-expiration-ms:604800000}")
     private long refreshExpirationMs;
@@ -147,6 +154,57 @@ public class AuthService implements UserDetailsService {
     @Transactional
     public void logout(String refreshTokenStr) {
         refreshTokenRepository.findByToken(refreshTokenStr).ifPresent(refreshTokenRepository::delete);
+    }
+
+    @Transactional
+    public void forgotPassword(ForgotPasswordRequest request) {
+        String email = request.getEmail().trim().toLowerCase();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("No account found with this email address."));
+
+        // Generate 6-digit OTP
+        String otp = String.format("%06d", new SecureRandom().nextInt(1_000_000));
+        Instant expiresAt = Instant.now().plus(10, ChronoUnit.MINUTES);
+
+        PasswordResetToken token = PasswordResetToken.builder()
+                .email(email)
+                .otpCode(otp)
+                .expiresAt(expiresAt)
+                .used(false)
+                .build();
+        passwordResetTokenRepository.save(token);
+
+        // Send OTP email
+        emailService.sendPasswordResetEmail(user.getEmail(), otp);
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        String email = request.getEmail().trim().toLowerCase();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("No account found with this email address."));
+
+        PasswordResetToken token = passwordResetTokenRepository
+                .findFirstByEmailAndUsedFalseOrderByCreatedAtDesc(email)
+                .orElseThrow(() -> new IllegalArgumentException("No active password reset request found."));
+
+        if (token.getExpiresAt().isBefore(Instant.now())) {
+            throw new IllegalArgumentException("Verification code has expired. Please request a new one.");
+        }
+
+        if (!token.getOtpCode().equals(request.getOtp().trim())) {
+            throw new IllegalArgumentException("Invalid verification code. Please check and try again.");
+        }
+
+        // Mark OTP token as used
+        token.setUsed(true);
+        passwordResetTokenRepository.save(token);
+
+        // Update password
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+
+        log.info("Password successfully updated for user {}", email);
     }
 
     public UserDto mapToUserDto(User user) {

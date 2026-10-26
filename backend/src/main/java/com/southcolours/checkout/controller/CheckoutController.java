@@ -1,7 +1,9 @@
 package com.southcolours.checkout.controller;
 
 import com.southcolours.checkout.dto.CreateCheckoutOrderRequest;
+import com.southcolours.checkout.dto.DirectOrderPlacementRequest;
 import com.southcolours.checkout.dto.RazorpayVerifyRequest;
+import com.southcolours.checkout.entity.Order;
 import com.southcolours.checkout.service.CheckoutService;
 import com.southcolours.security.dto.ApiResponse;
 import com.southcolours.security.entity.User;
@@ -25,6 +27,21 @@ public class CheckoutController {
 
     private final CheckoutService checkoutService;
     private final UserRepository userRepository;
+
+    @PostMapping("/place-order")
+    @Operation(summary = "Place a direct customer order (COD or direct payment) and persist to database")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> placeDirectOrder(
+            @RequestBody DirectOrderPlacementRequest request
+    ) {
+        Order savedOrder = checkoutService.placeDirectOrder(request);
+        Map<String, Object> responseData = Map.of(
+                "orderId", savedOrder.getId(),
+                "orderNumber", savedOrder.getOrderNumber(),
+                "totalAmount", savedOrder.getTotalAmount(),
+                "status", savedOrder.getStatus()
+        );
+        return ResponseEntity.ok(ApiResponse.success(responseData, "Order placed successfully"));
+    }
 
     @PostMapping("/initiate")
     @Operation(summary = "Initiate checkout, reserve stock, and generate Razorpay order")

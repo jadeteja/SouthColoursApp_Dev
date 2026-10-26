@@ -14,13 +14,17 @@ import {
 import { useRouter } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
 import { useCartStore } from '../../src/stores/cartStore';
+import { useAuthStore } from '../../src/stores/authStore';
+import { QuickPhoneOtpModal } from '../../src/components/QuickPhoneOtpModal';
 
 const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
 
 export default function CartScreen() {
   const router = useRouter();
+  const { user } = useAuthStore();
   const { items, updateQuantity, removeItem, clearCart, getSubtotal } = useCartStore();
 
+  const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [couponApplied, setCouponApplied] = useState(false);
   const [discountAmount, setDiscountAmount] = useState(0);
@@ -28,6 +32,14 @@ export default function CartScreen() {
   const subtotal = getSubtotal();
   const shipping = subtotal > 1500 || subtotal === 0 ? 0 : 99;
   const total = Math.max(0, subtotal - (couponApplied ? discountAmount : 0) + shipping);
+
+  const handleProceedToCheckout = () => {
+    if (!user) {
+      setOtpModalVisible(true);
+      return;
+    }
+    router.push('/checkout');
+  };
 
   const applyCoupon = () => {
     const code = couponCode.trim().toUpperCase();
@@ -192,11 +204,23 @@ export default function CartScreen() {
             <TouchableOpacity
               style={styles.checkoutBtn}
               activeOpacity={0.9}
-              onPress={() => router.push('/checkout')}
+              onPress={handleProceedToCheckout}
             >
               <Text style={styles.checkoutBtnText}>Proceed to Checkout →</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Quick OTP Login Sheet for Guest Checkout */}
+          <QuickPhoneOtpModal
+            visible={otpModalVisible}
+            onClose={() => setOtpModalVisible(false)}
+            onSuccess={() => {
+              setOtpModalVisible(false);
+              router.push('/checkout');
+            }}
+            title="Instant Checkout"
+            subtitle="Enter your mobile number to verify and complete your order"
+          />
         </>
       )}
     </View>
@@ -307,7 +331,7 @@ const styles = StyleSheet.create({
   stepBtn: {
     paddingHorizontal: 8,
     paddingVertical: 2,
-    backgroundColor: colors.surface,
+    backgroundColor: '#F8FAFC',
   },
   stepBtnText: {
     fontSize: 14,

@@ -9,8 +9,10 @@ import com.southcolours.cart.entity.Cart;
 import com.southcolours.cart.repository.CartRepository;
 import com.southcolours.cart.service.CartService;
 import com.southcolours.catalog.entity.ProductVariant;
+import com.southcolours.catalog.repository.ProductRepository;
 import com.southcolours.catalog.repository.ProductVariantRepository;
 import com.southcolours.checkout.dto.CreateCheckoutOrderRequest;
+import com.southcolours.checkout.dto.DirectOrderPlacementRequest;
 import com.southcolours.checkout.dto.RazorpayVerifyRequest;
 import com.southcolours.checkout.entity.Order;
 import com.southcolours.checkout.entity.OrderItem;
@@ -19,7 +21,9 @@ import com.southcolours.checkout.repository.OrderRepository;
 import com.southcolours.checkout.repository.PaymentRepository;
 import com.southcolours.admin.service.AdminOperationsService;
 import com.southcolours.notification.service.WhatsAppNotificationService;
+import com.southcolours.security.entity.Role;
 import com.southcolours.security.entity.User;
+import com.southcolours.security.repository.RoleRepository;
 import com.southcolours.security.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +33,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.UUID;
 
@@ -43,7 +49,9 @@ public class CheckoutService {
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
     private final ProductVariantRepository variantRepository;
+    private final ProductRepository productRepository;
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
     private final AdminOperationsService adminOperationsService;
     private final WhatsAppNotificationService whatsAppNotificationService;
 
@@ -219,5 +227,113 @@ public class CheckoutService {
         }
 
         return true;
+    }
+
+    @Transactional
+    public Order placeDirectOrder(DirectOrderPlacementRequest request) {
+        String email = request.getCustomerEmail();
+        if (email == null || email.trim().isEmpty()) {
+            email = "customer_" + System.currentTimeMillis() + "@southcolours.in";
+        }
+        final String finalEmail = email;
+
+        User user = userRepository.findByEmail(finalEmail).orElseGet(() -> {
+            Role customerRole = roleRepository.findByName("ROLE_CUSTOMER")
+                    .orElseGet(() -> roleRepository.save(Role.builder().name("ROLE_CUSTOMER").description("Customer").build()));
+            User newUser = User.builder()
+                    .email(finalEmail)
+                    .fullName(request.getCustomerName() != null && !request.getCustomerName().trim().isEmpty() ? request.getCustomerName() : "Valued Customer")
+                    .phoneNumber(request.getCustomerPhone())
+                    .roles(new HashSet<>(Collections.singletonList(customerRole)))
+                    .isActive(true)
+                    .build();
+            return userRepository.save(newUser);
+        });
+
+        String orderNum = request.getOrderNumber();
+        if (orderNum == null || orderNum.trim().isEmpty()) {
+            orderNum = "SC" + System.currentTimeMillis();
+        }
+        if (orderNum.startsWith("#")) {
+            orderNum = orderNum.substring(1);
+        }
+
+        BigDecimal subtotal = request.getSubtotal() != null ? request.getSubtotal() : BigDecimal.ZERO;
+        BigDecimal shippingFee = request.getShippingFee() != null ? request.getShippingFee() : BigDecimal.ZERO;
+        BigDecimal totalAmount = request.getTotalAmount() != null ? request.getTotalAmount() : subtotal.add(shippingFee);
+
+        Order order = Order.builder()
+                .orderNumber(orderNum)
+                .user(user)
+                .status("PROCESSING")
+                .subtotal(subtotal)
+                .discountAmount(BigDecimal.ZERO)
+                .shippingFee(shippingFee)
+                .taxAmount(BigDecimal.ZERO)
+                .totalAmount(totalAmount)
+                .shippingAddressSnapshot(request.getShippingAddress() != null ? request.getShippingAddress() : "{}")
+                .build();
+
+        if (request.getItems() != null && !request.getItems().isEmpty()) {
+            for (DirectOrderPlacementRequest.DirectOrderItemDto itemDto : request.getItems()) {
+                ProductVariant variant = null;
+                if (itemDto.getProductId() != null) {
+                    variant = productRepository.findById(itemDto.getProductId())
+                            .filter(p -> !p.getVariants().isEmpty())
+                            .map(p -> p.getVariants().get(0))
+                            .orElse(null);
+                }
+                if (variant == null) {
+                    variant = variantRepository.findAll().stream().findFirst().orElse(null);
+                }
+
+                OrderItem orderItem = OrderItem.builder()
+                        .order(order)
+                        .variant(variant)
+                        .productName(itemDto.getName() != null ? itemDto.getName() : "Southcolours Dress")
+                        .variantSku(variant != null ? variant.getSku() : "SC-GEN-" + (itemDto.getSize() != null ? itemDto.getSize() : "FREE"))
+                        .size(itemDto.getSize() != null ? itemDto.getSize() : "Free Size")
+                        .color("Standard")
+                        .imageUrl(itemDto.getImageUrl())
+                        .unitPrice(itemDto.getPrice() != null ? itemDto.getPrice() : BigDecimal.ZERO)
+                        .quantity(itemDto.getQuantity() != null ? itemDto.getQuantity() : 1)
+                        .totalPrice(itemDto.getPrice() != null ? itemDto.getPrice().multiply(BigDecimal.valueOf(itemDto.getQuantity() != null ? itemDto.getQuantity() : 1)) : BigDecimal.ZERO)
+                        .build();
+
+                order.getItems().add(orderItem);
+            }
+        }
+
+        Order savedOrder = orderRepository.save(order);
+
+        Payment payment = Payment.builder()
+                .order(savedOrder)
+                .paymentMethod(request.getPaymentMethod() != null ? request.getPaymentMethod() : "Cash on Delivery")
+                .gatewayName("DIRECT")
+                .amount(totalAmount)
+                .status("CAPTURED")
+                .build();
+        paymentRepository.save(payment);
+
+        // Send automated WhatsApp notification if enabled
+        if (adminOperationsService != null && adminOperationsService.isWhatsappEnabled()) {
+            try {
+                String customerPhone = request.getCustomerPhone() != null ? request.getCustomerPhone() : (user.getPhoneNumber());
+                whatsAppNotificationService.sendOrderPlacedMessage(
+                        customerPhone,
+                        user.getFullName(),
+                        savedOrder.getOrderNumber(),
+                        savedOrder.getTotalAmount() != null ? savedOrder.getTotalAmount().toString() : "0",
+                        adminOperationsService.getWhatsappAdminPhone(),
+                        adminOperationsService.getWhatsappTemplate(),
+                        adminOperationsService.getWhatsappPhoneNumberId(),
+                        adminOperationsService.getWhatsappAccessToken()
+                );
+            } catch (Exception e) {
+                log.error("Failed to process WhatsApp notification trigger for direct order {}: {}", savedOrder.getOrderNumber(), e.getMessage());
+            }
+        }
+
+        return savedOrder;
     }
 }

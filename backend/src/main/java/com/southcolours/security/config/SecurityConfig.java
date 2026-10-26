@@ -49,6 +49,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/media/**").permitAll()
                         .requestMatchers("/api/v1/uploads/**").permitAll()
                         .requestMatchers("/api/v1/payment-gateway/**").permitAll()
+                        .requestMatchers("/api/v1/checkout/place-order").permitAll()
                         // Webhooks
                         .requestMatchers("/api/v1/webhooks/**").permitAll()
                         // Swagger & Actuator

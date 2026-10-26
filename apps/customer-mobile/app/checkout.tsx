@@ -16,10 +16,12 @@ import { useRouter } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
 import { useCartStore } from '../src/stores/cartStore';
 import { useOrderStore } from '../src/stores/orderStore';
+import { useAuthStore } from '../src/stores/authStore';
 import { API_BASE_URL } from '../src/config/api';
 
 export default function CheckoutScreen() {
   const router = useRouter();
+  const { user } = useAuthStore();
   const { items, getSubtotal, clearCart } = useCartStore();
   const { addOrder } = useOrderStore();
 
@@ -33,7 +35,7 @@ export default function CheckoutScreen() {
   const shipping = subtotal > 1500 || subtotal === 0 ? 0 : 99;
   const totalAmount = subtotal + shipping;
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     if (items.length === 0) {
       Alert.alert('Empty Cart', 'Your cart is empty. Please add items before checking out.');
       return;
@@ -42,48 +44,85 @@ export default function CheckoutScreen() {
     if (selectedPayment === 'COD') {
       // Cash on Delivery direct confirmation
       setLoading(true);
-      setTimeout(() => {
-        setLoading(false);
-        const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
-        const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-        
-        // Save to live order history store
-        addOrder({
-          id: Date.now(),
-          orderNumber: '#' + orderNum,
-          date: dateStr,
-          status: 'Processing',
-          statusColor: '#d97706',
-          totalAmount: totalAmount,
-          paymentMethod: 'Cash on Delivery',
-          trackingId: 'TRK' + Math.floor(10000000 + Math.random() * 90000000),
-          carrier: 'Delhivery Express',
-          deliveryAddress: {
-            name: 'Priya Sharma',
-            street: '123, Green Park, Indiranagar',
-            cityStatePin: 'Bangalore, Karnataka - 560038',
-            phone: '+91 98765 43210',
-          },
-          items: items.map((i) => ({
-            name: i.name || (i as any).product?.name || 'Dress Item',
-            size: i.size,
-            price: i.price || (i as any).product?.price || 0,
-            quantity: i.quantity,
-            imageUrl: i.imageUrl || (i as any).product?.primaryImageUrl || ((i as any).product?.images && (i as any).product?.images[0]?.imageUrl),
-          })),
-        });
+      const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
+      const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      const customerName = user?.fullName || 'Priya Sharma';
+      const customerPhone = user?.phoneNumber || '+91 98765 43210';
+      const customerEmail = user?.email || 'priya@gmail.com';
 
-        clearCart();
-        router.replace({
-          pathname: '/order-confirmation',
-          params: {
-            orderNumber: '#' + orderNum,
-            orderDate: dateStr,
-            orderAmount: totalAmount.toString(),
-            paymentMethod: 'Cash on Delivery',
-          },
+      const orderPayload = {
+        orderNumber: '#' + orderNum,
+        customerName: customerName,
+        customerEmail: customerEmail,
+        customerPhone: customerPhone,
+        paymentMethod: 'Cash on Delivery',
+        subtotal: subtotal,
+        shippingFee: shipping,
+        totalAmount: totalAmount,
+        shippingAddress: JSON.stringify({
+          name: customerName,
+          street: '123, Green Park, Indiranagar',
+          cityStatePin: 'Bangalore, Karnataka - 560038',
+          phone: customerPhone,
+        }),
+        items: items.map((i) => ({
+          productId: i.productId || null,
+          name: i.name || (i as any).product?.name || 'Dress Item',
+          size: i.size,
+          price: i.price || (i as any).product?.price || 0,
+          quantity: i.quantity,
+          imageUrl: i.imageUrl || (i as any).product?.primaryImageUrl || ((i as any).product?.images && (i as any).product?.images[0]?.imageUrl),
+        })),
+      };
+
+      try {
+        await fetch(`${API_BASE_URL}/checkout/place-order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload),
         });
-      }, 500);
+      } catch (err) {
+        console.warn('Backend sync error:', err);
+      }
+
+      setLoading(false);
+
+      // Save to live order history store
+      addOrder({
+        id: Date.now(),
+        orderNumber: '#' + orderNum,
+        date: dateStr,
+        status: 'Processing',
+        statusColor: '#d97706',
+        totalAmount: totalAmount,
+        paymentMethod: 'Cash on Delivery',
+        trackingId: 'TRK' + Math.floor(10000000 + Math.random() * 90000000),
+        carrier: 'Delhivery Express',
+        deliveryAddress: {
+          name: customerName,
+          street: '123, Green Park, Indiranagar',
+          cityStatePin: 'Bangalore, Karnataka - 560038',
+          phone: customerPhone,
+        },
+        items: items.map((i) => ({
+          name: i.name || (i as any).product?.name || 'Dress Item',
+          size: i.size,
+          price: i.price || (i as any).product?.price || 0,
+          quantity: i.quantity,
+          imageUrl: i.imageUrl || (i as any).product?.primaryImageUrl || ((i as any).product?.images && (i as any).product?.images[0]?.imageUrl),
+        })),
+      });
+
+      clearCart();
+      router.replace({
+        pathname: '/order-confirmation',
+        params: {
+          orderNumber: '#' + orderNum,
+          orderDate: dateStr,
+          orderAmount: totalAmount.toString(),
+          paymentMethod: 'Cash on Delivery',
+        },
+      });
     } else {
       // Direct redirection to the live Razorpay Gateway page in device browser
       const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
@@ -100,14 +139,54 @@ export default function CheckoutScreen() {
   const handleSimulateRazorpayPayment = (success: boolean) => {
     setActivePaymentStep('PROCESSING');
 
-    setTimeout(() => {
+    setTimeout(async () => {
       if (success) {
+        const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
+        const rzpPaymentId = 'pay_' + Math.random().toString(36).substring(2, 12);
+        const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        const payMethod = 'Razorpay (' + (selectedPayment === 'RAZORPAY_UPI' ? 'UPI' : 'Card') + ')';
+        const customerName = user?.fullName || 'Priya Sharma';
+        const customerPhone = user?.phoneNumber || '+91 98765 43210';
+        const customerEmail = user?.email || 'priya@gmail.com';
+
+        const orderPayload = {
+          orderNumber: '#' + orderNum,
+          customerName: customerName,
+          customerEmail: customerEmail,
+          customerPhone: customerPhone,
+          paymentMethod: payMethod,
+          subtotal: subtotal,
+          shippingFee: shipping,
+          totalAmount: totalAmount,
+          shippingAddress: JSON.stringify({
+            name: customerName,
+            street: '123, Green Park, Indiranagar',
+            cityStatePin: 'Bangalore, Karnataka - 560038',
+            phone: customerPhone,
+          }),
+          items: items.map((i) => ({
+            productId: i.productId || null,
+            name: i.name || (i as any).product?.name || 'Dress Item',
+            size: i.size,
+            price: i.price || (i as any).product?.price || 0,
+            quantity: i.quantity,
+            imageUrl: i.imageUrl || (i as any).product?.primaryImageUrl || ((i as any).product?.images && (i as any).product?.images[0]?.imageUrl),
+          })),
+        };
+
+        try {
+          await fetch(`${API_BASE_URL}/checkout/place-order`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(orderPayload),
+          });
+        } catch (err) {
+          console.warn('Backend sync error:', err);
+        }
+
         setActivePaymentStep('SUCCESS');
         setTimeout(() => {
           setRazorpayModalVisible(false);
-          const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
-          const rzpPaymentId = 'pay_' + Math.random().toString(36).substring(2, 12);
-          const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
           addOrder({
             id: Date.now(),
@@ -116,14 +195,14 @@ export default function CheckoutScreen() {
             status: 'Processing',
             statusColor: '#d97706',
             totalAmount: totalAmount,
-            paymentMethod: 'Razorpay (' + (selectedPayment === 'RAZORPAY_UPI' ? 'UPI' : 'Card') + ')',
+            paymentMethod: payMethod,
             trackingId: 'RZP' + Math.floor(10000000 + Math.random() * 90000000),
             carrier: 'BlueDart Express',
             deliveryAddress: {
-              name: 'Priya Sharma',
+              name: customerName,
               street: '123, Green Park, Indiranagar',
               cityStatePin: 'Bangalore, Karnataka - 560038',
-              phone: '+91 98765 43210',
+              phone: customerPhone,
             },
             items: items.map((i) => ({
               name: i.name || (i as any).product?.name || 'Dress Item',
@@ -141,7 +220,7 @@ export default function CheckoutScreen() {
               orderNumber: '#' + orderNum,
               orderDate: dateStr,
               orderAmount: totalAmount.toString(),
-              paymentMethod: 'Razorpay (' + (selectedPayment === 'RAZORPAY_UPI' ? 'UPI' : 'Card') + ')',
+              paymentMethod: payMethod,
               transactionId: rzpPaymentId,
             },
           });

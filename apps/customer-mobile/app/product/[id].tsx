@@ -21,6 +21,8 @@ import { colors, radii, spacing, typography } from '@southcolours/theme';
 import { API_BASE_URL } from '../../src/config/api';
 import { useWishlistStore } from '../../src/stores/wishlistStore';
 import { useCartStore } from '../../src/stores/cartStore';
+import { useAuthStore } from '../../src/stores/authStore';
+import { QuickPhoneOtpModal } from '../../src/components/QuickPhoneOtpModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const statusBarHeight = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
@@ -59,9 +61,11 @@ const SIZE_CHART_DATA = [
 export default function ProductDetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuthStore();
   const { isInWishlist, toggleItem } = useWishlistStore();
   const { addItem: addToCartStore, getTotalItems } = useCartStore();
 
+  const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSize, setSelectedSize] = useState<string>('');
@@ -240,7 +244,12 @@ export default function ProductDetailsScreen() {
       imageUrl: productThumbnail,
       quantity,
     });
-    router.push('/(tabs)/cart');
+
+    if (!user) {
+      setOtpModalVisible(true);
+      return;
+    }
+    router.push('/checkout');
   };
 
   if (loading) {
@@ -725,6 +734,18 @@ export default function ProductDetailsScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Quick OTP Login Sheet for Buy Now */}
+      <QuickPhoneOtpModal
+        visible={otpModalVisible}
+        onClose={() => setOtpModalVisible(false)}
+        onSuccess={() => {
+          setOtpModalVisible(false);
+          router.push('/checkout');
+        }}
+        title="Buy Now - Quick Login"
+        subtitle="Enter mobile number to verify and proceed directly to delivery & payment"
+      />
     </View>
   );
 }

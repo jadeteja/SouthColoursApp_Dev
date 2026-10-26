@@ -14,6 +14,8 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
+import * as FileSystem from 'expo-file-system';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
 import { API_BASE_URL } from '../../src/config/api';
 import { useAdminAuthStore } from '../../src/stores/adminAuthStore';
@@ -389,14 +391,34 @@ export default function AdminOrderDetailsScreen() {
 
       const { uri } = await Print.printToFileAsync({ html: htmlContent });
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          UTI: '.pdf',
-          mimeType: 'application/pdf',
-          dialogTitle: `Download Invoice ${invoiceNumber}`,
-        });
+      if (Platform.OS === 'android') {
+        try {
+          const contentUri = await FileSystem.getContentUriAsync(uri);
+          await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+            data: contentUri,
+            flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+            type: 'application/pdf',
+          });
+        } catch (androidErr) {
+          console.warn('Intent launcher fallback to native print/sharing:', androidErr);
+          if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(uri, {
+              UTI: '.pdf',
+              mimeType: 'application/pdf',
+              dialogTitle: `Invoice ${invoiceNumber}`,
+            });
+          }
+        }
+      } else if (Platform.OS === 'ios') {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            UTI: '.pdf',
+            mimeType: 'application/pdf',
+          });
+        }
       } else {
-        Alert.alert('Invoice Generated', `Invoice PDF saved at: ${uri}`);
+        // Web fallback: print/view dialog directly
+        await Print.printAsync({ html: htmlContent });
       }
     } catch (err: any) {
       console.warn('Invoice generation error:', err);

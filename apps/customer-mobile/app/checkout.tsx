@@ -49,25 +49,25 @@ export default function CheckoutScreen() {
   const shipping = subtotal > 1500 || subtotal === 0 ? 0 : 99;
   const totalAmount = subtotal + shipping;
 
-  const getEffectiveAddress = (): DeliveryAddress => {
-    if (currentAddress && currentAddress.street) {
+  const hasSavedAddress = Boolean(
+    currentAddress &&
+    currentAddress.name?.trim() &&
+    currentAddress.phone?.trim() &&
+    currentAddress.street?.trim() &&
+    currentAddress.city?.trim() &&
+    currentAddress.pincode?.trim()
+  );
+
+  const getEffectiveAddress = (): DeliveryAddress | null => {
+    if (hasSavedAddress && currentAddress) {
       return currentAddress;
     }
-    return {
-      id: 'default',
-      name: user?.fullName || 'Guest Customer',
-      phone: user?.phoneNumber || '+91 98765 43210',
-      email: user?.email || 'guest@southcolours.in',
-      street: '123, Green Park, Indiranagar',
-      city: 'Bangalore',
-      state: 'Karnataka',
-      pincode: '560038',
-    };
+    return null;
   };
 
   const handleSaveAddress = () => {
     if (!formName.trim() || !formPhone.trim() || !formStreet.trim() || !formCity.trim() || !formPincode.trim()) {
-      Alert.alert('Incomplete Address', 'Please fill in all address fields (Name, Phone, Street, City, and Pincode).');
+      Alert.alert('Incomplete Address', 'Please fill in all required address fields (Full Name, Phone Number, Street, City, and Pincode).');
       return;
     }
     const newAddr: DeliveryAddress = {
@@ -85,13 +85,12 @@ export default function CheckoutScreen() {
   };
 
   const validateAddressBeforeOrder = (): boolean => {
-    const hasAddress = currentAddress && currentAddress.street && currentAddress.city && currentAddress.pincode;
-    if (!hasAddress && isGuest) {
+    if (!hasSavedAddress) {
       Alert.alert(
         'Delivery Address Required',
-        'Please enter your delivery address and contact details to receive your order.',
+        'Please enter your full delivery address and mobile number before proceeding to payment.',
         [
-          { text: 'Enter Address', onPress: () => setAddressModalVisible(true) },
+          { text: 'Enter Delivery Address', onPress: () => setAddressModalVisible(true) },
         ]
       );
       return false;
@@ -109,7 +108,7 @@ export default function CheckoutScreen() {
       return;
     }
 
-    const addr = getEffectiveAddress();
+    const addr = getEffectiveAddress()!;
     const customerName = addr.name;
     const customerPhone = addr.phone;
     const customerEmail = user?.email || addr.email || 'guest@southcolours.in';
@@ -212,7 +211,16 @@ export default function CheckoutScreen() {
 
     setTimeout(async () => {
       if (success) {
-        const addr = getEffectiveAddress();
+        const addr = getEffectiveAddress() || {
+          id: 'temp',
+          name: user?.fullName || 'Customer',
+          phone: user?.phoneNumber || '+91 98765 43210',
+          email: user?.email || 'guest@southcolours.in',
+          street: 'Standard Address',
+          city: 'Bangalore',
+          state: 'Karnataka',
+          pincode: '560038',
+        };
         const customerName = addr.name;
         const customerPhone = addr.phone;
         const customerEmail = user?.email || addr.email || 'guest@southcolours.in';
@@ -430,7 +438,7 @@ export default function CheckoutScreen() {
           <Text style={styles.footerPrice}>₹{totalAmount}</Text>
         </View>
         <TouchableOpacity
-          style={styles.placeOrderBtn}
+          style={[styles.placeOrderBtn, !hasSavedAddress && { backgroundColor: '#cbd5e1' }]}
           activeOpacity={0.9}
           onPress={handlePlaceOrder}
           disabled={loading}
@@ -439,7 +447,11 @@ export default function CheckoutScreen() {
             <ActivityIndicator color={colors.white} />
           ) : (
             <Text style={styles.placeOrderText}>
-              {selectedPayment === 'COD' ? 'Confirm Order' : 'Pay with Razorpay →'}
+              {!hasSavedAddress
+                ? 'Enter Address to Pay'
+                : selectedPayment === 'COD'
+                ? 'Confirm Order'
+                : 'Pay with Razorpay →'}
             </Text>
           )}
         </TouchableOpacity>

@@ -27,6 +27,12 @@ public class AdminOrderController {
         return ResponseEntity.ok(ApiResponse.success(orderService.getAllAdminOrders(status), "Admin orders retrieved"));
     }
 
+    @GetMapping("/{id}")
+    @Operation(summary = "Get single store order details by ID")
+    public ResponseEntity<ApiResponse<OrderDto>> getStoreOrderById(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.getOrderById(id), "Order details retrieved"));
+    }
+
     @PatchMapping("/{id}/status")
     @Operation(summary = "Update order fulfillment status (PROCESSING, SHIPPED, DELIVERED, CANCELLED)")
     public ResponseEntity<ApiResponse<OrderDto>> updateStatus(

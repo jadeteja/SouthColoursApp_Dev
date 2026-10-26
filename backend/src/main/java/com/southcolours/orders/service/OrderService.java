@@ -35,6 +35,13 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
+    public OrderDto getOrderById(Long id) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Order not found with ID: " + id));
+        return mapToOrderDto(order);
+    }
+
+    @Transactional(readOnly = true)
     public OrderDto getOrderByNumber(String orderNumber) {
         Order order = orderRepository.findByOrderNumber(orderNumber)
                 .orElseThrow(() -> new IllegalArgumentException("Order not found: " + orderNumber));

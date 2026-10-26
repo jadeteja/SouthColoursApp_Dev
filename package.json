@@ -12,5 +12,9 @@
   },
   "devDependencies": {
     "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "expo-print": "~12.8.1",
+    "expo-sharing": "~11.10.0"
   }
 }

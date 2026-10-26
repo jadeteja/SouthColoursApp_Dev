@@ -11,12 +11,14 @@ import {
   Modal,
   Image,
   Linking,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
 import { useCartStore } from '../src/stores/cartStore';
 import { useOrderStore } from '../src/stores/orderStore';
 import { useAuthStore } from '../src/stores/authStore';
+import { useAddressStore, DeliveryAddress } from '../src/stores/addressStore';
 import { API_BASE_URL } from '../src/config/api';
 
 export default function CheckoutScreen() {
@@ -24,6 +26,18 @@ export default function CheckoutScreen() {
   const { user } = useAuthStore();
   const { items, getSubtotal, clearCart } = useCartStore();
   const { addOrder } = useOrderStore();
+  const { currentAddress, setAddress } = useAddressStore();
+
+  const isGuest = !user || !user.email;
+
+  // Delivery address form state
+  const [addressModalVisible, setAddressModalVisible] = useState(false);
+  const [formName, setFormName] = useState(currentAddress?.name || user?.fullName || '');
+  const [formPhone, setFormPhone] = useState(currentAddress?.phone || user?.phoneNumber || '');
+  const [formStreet, setFormStreet] = useState(currentAddress?.street || '');
+  const [formCity, setFormCity] = useState(currentAddress?.city || '');
+  const [formState, setFormState] = useState(currentAddress?.state || '');
+  const [formPincode, setFormPincode] = useState(currentAddress?.pincode || '');
 
   const [selectedAddressId, setSelectedAddressId] = useState(1);
   const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY_UPI' | 'RAZORPAY_CARD' | 'RAZORPAY_NETBANKING' | 'COD'>('RAZORPAY_UPI');
@@ -35,20 +49,77 @@ export default function CheckoutScreen() {
   const shipping = subtotal > 1500 || subtotal === 0 ? 0 : 99;
   const totalAmount = subtotal + shipping;
 
+  const getEffectiveAddress = (): DeliveryAddress => {
+    if (currentAddress && currentAddress.street) {
+      return currentAddress;
+    }
+    return {
+      id: 'default',
+      name: user?.fullName || 'Guest Customer',
+      phone: user?.phoneNumber || '+91 98765 43210',
+      email: user?.email || 'guest@southcolours.in',
+      street: '123, Green Park, Indiranagar',
+      city: 'Bangalore',
+      state: 'Karnataka',
+      pincode: '560038',
+    };
+  };
+
+  const handleSaveAddress = () => {
+    if (!formName.trim() || !formPhone.trim() || !formStreet.trim() || !formCity.trim() || !formPincode.trim()) {
+      Alert.alert('Incomplete Address', 'Please fill in all address fields (Name, Phone, Street, City, and Pincode).');
+      return;
+    }
+    const newAddr: DeliveryAddress = {
+      id: Date.now().toString(),
+      name: formName.trim(),
+      phone: formPhone.trim(),
+      email: user?.email || 'guest@southcolours.in',
+      street: formStreet.trim(),
+      city: formCity.trim(),
+      state: formState.trim() || 'State',
+      pincode: formPincode.trim(),
+    };
+    setAddress(newAddr);
+    setAddressModalVisible(false);
+  };
+
+  const validateAddressBeforeOrder = (): boolean => {
+    const hasAddress = currentAddress && currentAddress.street && currentAddress.city && currentAddress.pincode;
+    if (!hasAddress && isGuest) {
+      Alert.alert(
+        'Delivery Address Required',
+        'Please enter your delivery address and contact details to receive your order.',
+        [
+          { text: 'Enter Address', onPress: () => setAddressModalVisible(true) },
+        ]
+      );
+      return false;
+    }
+    return true;
+  };
+
   const handlePlaceOrder = async () => {
     if (items.length === 0) {
       Alert.alert('Empty Cart', 'Your cart is empty. Please add items before checking out.');
       return;
     }
 
+    if (!validateAddressBeforeOrder()) {
+      return;
+    }
+
+    const addr = getEffectiveAddress();
+    const customerName = addr.name;
+    const customerPhone = addr.phone;
+    const customerEmail = user?.email || addr.email || 'guest@southcolours.in';
+    const cityStatePin = `${addr.city}, ${addr.state} - ${addr.pincode}`;
+
     if (selectedPayment === 'COD') {
       // Cash on Delivery direct confirmation
       setLoading(true);
       const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
       const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-      const customerName = user?.fullName || 'Priya Sharma';
-      const customerPhone = user?.phoneNumber || '+91 98765 43210';
-      const customerEmail = user?.email || 'priya@gmail.com';
 
       const orderPayload = {
         orderNumber: '#' + orderNum,
@@ -61,8 +132,8 @@ export default function CheckoutScreen() {
         totalAmount: totalAmount,
         shippingAddress: JSON.stringify({
           name: customerName,
-          street: '123, Green Park, Indiranagar',
-          cityStatePin: 'Bangalore, Karnataka - 560038',
+          street: addr.street,
+          cityStatePin: cityStatePin,
           phone: customerPhone,
         }),
         items: items.map((i) => ({
@@ -100,8 +171,8 @@ export default function CheckoutScreen() {
         carrier: 'Delhivery Express',
         deliveryAddress: {
           name: customerName,
-          street: '123, Green Park, Indiranagar',
-          cityStatePin: 'Bangalore, Karnataka - 560038',
+          street: addr.street,
+          cityStatePin: cityStatePin,
           phone: customerPhone,
         },
         items: items.map((i) => ({
@@ -126,7 +197,7 @@ export default function CheckoutScreen() {
     } else {
       // Direct redirection to the live Razorpay Gateway page in device browser
       const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
-      const razorpayGatewayUrl = `${API_BASE_URL}/payment-gateway/pay?amount=${totalAmount}&orderNumber=${orderNum}&name=Priya%20Sharma&phone=9876543210`;
+      const razorpayGatewayUrl = `${API_BASE_URL}/payment-gateway/pay?amount=${totalAmount}&orderNumber=${orderNum}&name=${encodeURIComponent(customerName)}&phone=${encodeURIComponent(customerPhone)}`;
 
       Linking.openURL(razorpayGatewayUrl).catch(() => {
         // Fallback to in-app sheet if deep link cannot open external browser
@@ -141,13 +212,16 @@ export default function CheckoutScreen() {
 
     setTimeout(async () => {
       if (success) {
+        const addr = getEffectiveAddress();
+        const customerName = addr.name;
+        const customerPhone = addr.phone;
+        const customerEmail = user?.email || addr.email || 'guest@southcolours.in';
+        const cityStatePin = `${addr.city}, ${addr.state} - ${addr.pincode}`;
+
         const orderNum = 'SC' + Math.floor(100000 + Math.random() * 900000);
         const rzpPaymentId = 'pay_' + Math.random().toString(36).substring(2, 12);
         const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
         const payMethod = 'Razorpay (' + (selectedPayment === 'RAZORPAY_UPI' ? 'UPI' : 'Card') + ')';
-        const customerName = user?.fullName || 'Priya Sharma';
-        const customerPhone = user?.phoneNumber || '+91 98765 43210';
-        const customerEmail = user?.email || 'priya@gmail.com';
 
         const orderPayload = {
           orderNumber: '#' + orderNum,
@@ -160,8 +234,8 @@ export default function CheckoutScreen() {
           totalAmount: totalAmount,
           shippingAddress: JSON.stringify({
             name: customerName,
-            street: '123, Green Park, Indiranagar',
-            cityStatePin: 'Bangalore, Karnataka - 560038',
+            street: addr.street,
+            cityStatePin: cityStatePin,
             phone: customerPhone,
           }),
           items: items.map((i) => ({
@@ -200,8 +274,8 @@ export default function CheckoutScreen() {
             carrier: 'BlueDart Express',
             deliveryAddress: {
               name: customerName,
-              street: '123, Green Park, Indiranagar',
-              cityStatePin: 'Bangalore, Karnataka - 560038',
+              street: addr.street,
+              cityStatePin: cityStatePin,
               phone: customerPhone,
             },
             items: items.map((i) => ({
@@ -246,22 +320,42 @@ export default function CheckoutScreen() {
         {/* 1. Delivery Address Section */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>1. Delivery Address</Text>
+          <TouchableOpacity onPress={() => setAddressModalVisible(true)}>
+            <Text style={styles.changeAddressBtn}>
+              {currentAddress ? 'Change / Edit' : '+ Enter Address'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Selected Address Card */}
         <TouchableOpacity
-          style={[styles.addressCard, selectedAddressId === 1 && styles.addressCardActive]}
-          onPress={() => setSelectedAddressId(1)}
+          style={[styles.addressCard, styles.addressCardActive]}
+          onPress={() => setAddressModalVisible(true)}
         >
           <View style={styles.addressTop}>
             <View style={styles.radioCircle}>
-              {selectedAddressId === 1 && <View style={styles.radioInner} />}
+              <View style={styles.radioInner} />
             </View>
             <View style={styles.addressInfo}>
-              <Text style={styles.recipientName}>Home &bull; Priya Sharma</Text>
-              <Text style={styles.addressLine}>Plot 42, Jubilee Hills, Road No. 10</Text>
-              <Text style={styles.addressLine}>Hyderabad, Telangana - 500033</Text>
-              <Text style={styles.phoneText}>📞 +91 98765 43210</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.recipientName}>
+                  {currentAddress ? currentAddress.name : (user?.fullName || 'Enter Delivery Address')}
+                </Text>
+                <Text style={styles.tapToEditText}>✏️ Edit</Text>
+              </View>
+              {currentAddress ? (
+                <>
+                  <Text style={styles.addressLine}>{currentAddress.street}</Text>
+                  <Text style={styles.addressLine}>
+                    {currentAddress.city}, {currentAddress.state} - {currentAddress.pincode}
+                  </Text>
+                  <Text style={styles.phoneText}>📞 {currentAddress.phone}</Text>
+                </>
+              ) : (
+                <Text style={[styles.addressLine, { color: colors.primaryDeep, fontWeight: '600', marginTop: 4 }]}>
+                  ⚠️ Tap here to enter your name, address, and mobile number.
+                </Text>
+              )}
             </View>
           </View>
         </TouchableOpacity>
@@ -350,6 +444,88 @@ export default function CheckoutScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Address Entry / Edit Modal */}
+      <Modal
+        visible={addressModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddressModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.addressModalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Delivery Address</Text>
+              <TouchableOpacity onPress={() => setAddressModalVisible(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+              <Text style={styles.inputLabel}>Full Name *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. Priya Sharma"
+                value={formName}
+                onChangeText={setFormName}
+              />
+
+              <Text style={styles.inputLabel}>Mobile Phone Number *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. +91 98765 43210"
+                keyboardType="phone-pad"
+                value={formPhone}
+                onChangeText={setFormPhone}
+              />
+
+              <Text style={styles.inputLabel}>House / Flat / Street Address *</Text>
+              <TextInput
+                style={[styles.textInput, { height: 60 }]}
+                placeholder="e.g. Plot 42, Jubilee Hills, Road No. 10"
+                multiline
+                value={formStreet}
+                onChangeText={setFormStreet}
+              />
+
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>City *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g. Hyderabad"
+                    value={formCity}
+                    onChangeText={setFormCity}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>State *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g. Telangana"
+                    value={formState}
+                    onChangeText={setFormState}
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.inputLabel}>Pincode *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. 500033"
+                keyboardType="numeric"
+                maxLength={6}
+                value={formPincode}
+                onChangeText={setFormPincode}
+              />
+
+              <TouchableOpacity style={styles.saveAddressBtn} onPress={handleSaveAddress}>
+                <Text style={styles.saveAddressBtnText}>Save Delivery Address</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Razorpay Standard Payment Modal */}
       <Modal
@@ -753,5 +929,70 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#16a34a',
+  },
+  changeAddressBtn: {
+    color: colors.primaryDeep,
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
+  },
+  tapToEditText: {
+    fontSize: 12,
+    color: colors.primaryDeep,
+    fontWeight: '600',
+  },
+  addressModalCard: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    padding: spacing.lg,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primaryText,
+  },
+  modalCloseText: {
+    fontSize: 18,
+    color: colors.secondaryText,
+    padding: 4,
+  },
+  inputLabel: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semiBold,
+    color: colors.primaryText,
+    marginBottom: 4,
+    marginTop: spacing.sm,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    fontSize: typography.fontSizes.sm,
+    backgroundColor: '#FAF5F7',
+    color: colors.primaryText,
+  },
+  saveAddressBtn: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: radii.full,
+    alignItems: 'center',
+    marginTop: spacing.lg,
+  },
+  saveAddressBtnText: {
+    color: colors.white,
+    fontWeight: typography.fontWeights.bold,
+    fontSize: typography.fontSizes.sm,
   },
 });

@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Linking,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Print from 'expo-print';
@@ -436,6 +437,68 @@ export default function AdminOrderDetailsScreen() {
     );
   };
 
+  const handleSendWhatsApp = async () => {
+    try {
+      // 1. Fetch current configured template and admin number from settings
+      let template =
+        'Hello {customerName}! 🌸\nYour Southcolours order #{orderNumber} for ₹{totalAmount} has been placed successfully!\nYou will shortly receive your order tracking ID from our admin at {adminPhone}.\nThank you for shopping with us!';
+      let adminPhone = '+91 63045 79593';
+
+      try {
+        const token = useAdminAuthStore.getState().token;
+        const headers: Record<string, string> = {};
+        if (token && token !== 'mock_admin_token') {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const res = await fetch(`${API_BASE_URL}/admin/settings`, { headers });
+        const json = await res.json();
+        if (json.success && json.data) {
+          if (json.data.whatsappTemplate) template = json.data.whatsappTemplate;
+          if (json.data.whatsappAdminPhone) adminPhone = json.data.whatsappAdminPhone;
+        }
+      } catch (e) {
+        console.log('Using default WhatsApp template fallback');
+      }
+
+      // 2. Format phone number: clean all non-digits
+      const rawPhone = customerPhone || '';
+      let cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+
+      // Add default India +91 country code if 10 digits
+      if (cleanPhone.length === 10) {
+        cleanPhone = '91' + cleanPhone;
+      }
+
+      if (!cleanPhone || cleanPhone.length < 10) {
+        Alert.alert('Customer Phone Missing', 'This customer does not have a valid mobile phone number attached to the order.');
+        return;
+      }
+
+      // 3. Build personalized message
+      const cleanOrderNum = orderNumber.replace('#', '');
+      const message = template
+        .replace(/{customerName}/g, customerName)
+        .replace(/{orderNumber}/g, cleanOrderNum)
+        .replace(/{totalAmount}/g, total.toLocaleString('en-IN'))
+        .replace(/{adminPhone}/g, adminPhone);
+
+      // 4. Open WhatsApp via deep-link
+      const encodedMsg = encodeURIComponent(message);
+      const whatsappUrl = `whatsapp://send?phone=${cleanPhone}&text=${encodedMsg}`;
+      const webFallback = `https://wa.me/${cleanPhone}?text=${encodedMsg}`;
+
+      const canOpen = await Linking.canOpenURL(whatsappUrl);
+      if (canOpen) {
+        await Linking.openURL(whatsappUrl);
+      } else {
+        await Linking.openURL(webFallback);
+      }
+    } catch (err: any) {
+      console.warn('Error opening WhatsApp:', err);
+      Alert.alert('Error', 'Unable to launch WhatsApp. Please make sure WhatsApp is installed on this device.');
+    }
+  };
+
   if (loading) {
     return (
       <View style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -535,21 +598,28 @@ export default function AdminOrderDetailsScreen() {
         </View>
 
         {/* Actions */}
-        <View style={styles.actionButtonsRow}>
-          <TouchableOpacity style={styles.updateStatusBtn} onPress={handleUpdateStatus}>
-            <Text style={styles.updateStatusText}>Update Status</Text>
+        <View style={styles.actionButtonsCol}>
+          <TouchableOpacity style={styles.whatsappBtn} onPress={handleSendWhatsApp} activeOpacity={0.8}>
+            <Text style={{ fontSize: 18, marginRight: 6 }}>💬</Text>
+            <Text style={styles.whatsappBtnText}>Send WhatsApp Confirmation</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.invoiceBtn, generatingPdf && { opacity: 0.6 }]}
-            onPress={handleGenerateInvoice}
-            disabled={generatingPdf}
-          >
-            {generatingPdf ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Text style={styles.invoiceText}>Generate Invoice</Text>
-            )}
-          </TouchableOpacity>
+
+          <View style={styles.actionButtonsRow}>
+            <TouchableOpacity style={styles.updateStatusBtn} onPress={handleUpdateStatus}>
+              <Text style={styles.updateStatusText}>Update Status</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.invoiceBtn, generatingPdf && { opacity: 0.6 }]}
+              onPress={handleGenerateInvoice}
+              disabled={generatingPdf}
+            >
+              {generatingPdf ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={styles.invoiceText}>Generate Invoice</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -726,10 +796,32 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.bold,
     color: colors.primaryDeep,
   },
+  actionButtonsCol: {
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  whatsappBtn: {
+    backgroundColor: '#25D366', // WhatsApp Official Brand Color
+    paddingVertical: 14,
+    borderRadius: radii.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#25D366',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 3,
+  },
+  whatsappBtnText: {
+    color: colors.white,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
+  },
   actionButtonsRow: {
     flexDirection: 'row',
     gap: spacing.md,
-    marginTop: spacing.sm,
+    marginTop: 2,
   },
   updateStatusBtn: {
     flex: 1,

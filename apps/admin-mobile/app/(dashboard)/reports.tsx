@@ -78,7 +78,17 @@ export default function AdminReportsScreen() {
         setOrdersList(ordersJson.data);
       }
       if (custJson.success && Array.isArray(custJson.data)) {
-        setCustomersList(custJson.data);
+        setCustomersList(
+          custJson.data.filter((c: any) => {
+            const email = (c.email || '').toLowerCase();
+            const name = (c.fullName || '').toLowerCase();
+            return (
+              !email.includes('admin') &&
+              !name.includes('administrator') &&
+              !name.includes('store admin')
+            );
+          })
+        );
       }
       if (prodJson.success && prodJson.data?.content) {
         setProductsList(prodJson.data.content);

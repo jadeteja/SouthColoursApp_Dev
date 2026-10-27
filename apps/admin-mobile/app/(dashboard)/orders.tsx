@@ -10,6 +10,7 @@ import {
   StatusBar as RNStatusBar,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, radii, spacing, typography } from '@southcolours/theme';
@@ -26,6 +27,11 @@ interface AdminOrderItem {
   createdAt: string;
   totalAmount: number;
   status: string;
+  items?: Array<{
+    id: number;
+    productName: string;
+    imageUrl?: string;
+  }>;
 }
 
 export default function AdminOrdersListScreen() {
@@ -159,30 +165,38 @@ export default function AdminOrdersListScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.orderCard}
-              activeOpacity={0.7}
-              onPress={() => router.push(`/(dashboard)/order-details?id=${item.id}`)}
-            >
-              <View style={styles.thumb}>
-                <Text style={{ fontSize: 26 }}>👗</Text>
-              </View>
-              <View style={styles.infoCol}>
-                <Text style={styles.orderNum}>{item.orderNumber || `#SC${item.id}`}</Text>
-                <Text style={styles.orderDate}>{item.createdAt || 'Recent'}</Text>
-                <Text style={styles.customerName}>
-                  {item.customerName || item.customerEmail || 'Customer'}
-                </Text>
-                <Text style={styles.amount}>₹ {Number(item.totalAmount || 0).toLocaleString('en-IN')}</Text>
-              </View>
-              <View style={[styles.statusBadge, { backgroundColor: colors.primarySoft }]}>
-                <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-                  {item.status || 'PENDING'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
+          renderItem={({ item }) => {
+            const firstItemImage = item.items?.find((i) => i.imageUrl)?.imageUrl;
+
+            return (
+              <TouchableOpacity
+                style={styles.orderCard}
+                activeOpacity={0.7}
+                onPress={() => router.push(`/(dashboard)/order-details?id=${item.id}`)}
+              >
+                <View style={styles.thumb}>
+                  {firstItemImage ? (
+                    <Image source={{ uri: firstItemImage }} style={styles.thumbImg} resizeMode="cover" />
+                  ) : (
+                    <Text style={{ fontSize: 26 }}>👗</Text>
+                  )}
+                </View>
+                <View style={styles.infoCol}>
+                  <Text style={styles.orderNum}>{item.orderNumber || `#SC${item.id}`}</Text>
+                  <Text style={styles.orderDate}>{item.createdAt || 'Recent'}</Text>
+                  <Text style={styles.customerName}>
+                    {item.customerName || item.customerEmail || 'Customer'}
+                  </Text>
+                  <Text style={styles.amount}>₹ {Number(item.totalAmount || 0).toLocaleString('en-IN')}</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: colors.primarySoft }]}>
+                  <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
+                    {item.status || 'PENDING'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
     </View>
@@ -306,6 +320,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  thumbImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: radii.md,
   },
   infoCol: {
     flex: 1,

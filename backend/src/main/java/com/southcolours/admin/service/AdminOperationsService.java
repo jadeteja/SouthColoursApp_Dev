@@ -44,6 +44,15 @@ public class AdminOperationsService {
     private static String activeRazorpayKeySecret = null;
     private static boolean activeCodEnabled = true;
 
+    // Store Profile & Address Configuration State
+    private static String activeStoreName = "Southcolours";
+    private static String activeSupportPhone = "+91 9876543210";
+    private static String activeSupportEmail = "support@southcolours.com";
+    private static String activeStoreAddress = "123, Green Park, Bangalore, Karnataka - 560001";
+    private static String activeTaxPercentage = "5%";
+    private static String activeFreeShippingThreshold = "1500";
+    private static String activeDefaultShippingFee = "99";
+
     // WhatsApp Notification Configuration State
     private static boolean whatsappEnabled = false;
     private static String whatsappAdminPhone = "+91 9876543210";
@@ -132,16 +141,38 @@ public class AdminOperationsService {
     @Transactional(readOnly = true)
     public List<CustomerSummaryDto> getCustomersList(String search) {
         List<User> users = userRepository.findAll();
-        return users.stream().map(u -> CustomerSummaryDto.builder()
-                .id(u.getId())
-                .fullName(u.getFullName())
-                .email(u.getEmail())
-                .phoneNumber(u.getPhoneNumber() != null ? u.getPhoneNumber() : "+91 9876543210")
-                .orderCount(12)
-                .totalSpent(new BigDecimal("15499"))
-                .registeredDate(u.getCreatedAt() != null ? u.getCreatedAt().format(FORMATTER) : "12 May 2024")
-                .isActive(u.getIsActive())
-                .build()).collect(Collectors.toList());
+        List<Order> allOrders = orderRepository.findAll();
+
+        return users.stream()
+                .filter(u -> u.getRoles().stream().noneMatch(r -> "ROLE_ADMIN".equals(r.getName()) || "ROLE_SUPER_ADMIN".equals(r.getName())))
+                .filter(u -> {
+                    if (search == null || search.trim().isEmpty()) return true;
+                    String q = search.trim().toLowerCase();
+                    return (u.getFullName() != null && u.getFullName().toLowerCase().contains(q))
+                            || (u.getEmail() != null && u.getEmail().toLowerCase().contains(q))
+                            || (u.getPhoneNumber() != null && u.getPhoneNumber().contains(q));
+                })
+                .map(u -> {
+                    List<Order> userOrders = allOrders.stream()
+                            .filter(o -> o.getUser() != null && o.getUser().getId().equals(u.getId()))
+                            .collect(Collectors.toList());
+
+                    BigDecimal totalSpent = userOrders.stream()
+                            .filter(o -> !"CANCELLED".equalsIgnoreCase(o.getStatus()))
+                            .map(Order::getTotalAmount)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                    return CustomerSummaryDto.builder()
+                            .id(u.getId())
+                            .fullName(u.getFullName())
+                            .email(u.getEmail())
+                            .phoneNumber(u.getPhoneNumber() != null ? u.getPhoneNumber() : "")
+                            .orderCount(userOrders.size())
+                            .totalSpent(totalSpent)
+                            .registeredDate(u.getCreatedAt() != null ? u.getCreatedAt().format(FORMATTER) : "Recently")
+                            .isActive(u.getIsActive())
+                            .build();
+                }).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -154,16 +185,35 @@ public class AdminOperationsService {
         return bannerRepository.findAll();
     }
 
+    public void updateStoreProfile(String storeName, String phone, String email) {
+        if (storeName != null && !storeName.isBlank()) activeStoreName = storeName.trim();
+        if (phone != null && !phone.isBlank()) activeSupportPhone = phone.trim();
+        if (email != null && !email.isBlank()) activeSupportEmail = email.trim();
+        log.info("Store profile updated: name={}, phone={}, email={}", activeStoreName, activeSupportPhone, activeSupportEmail);
+    }
+
+    public void updateStoreAddress(String address) {
+        if (address != null && !address.isBlank()) activeStoreAddress = address.trim();
+        log.info("Store address updated: address={}", activeStoreAddress);
+    }
+
+    public void updateTaxAndShipping(String gstRate, String freeShippingAbove, String standardShippingFee) {
+        if (gstRate != null && !gstRate.isBlank()) activeTaxPercentage = gstRate.trim();
+        if (freeShippingAbove != null && !freeShippingAbove.isBlank()) activeFreeShippingThreshold = freeShippingAbove.trim();
+        if (standardShippingFee != null && !standardShippingFee.isBlank()) activeDefaultShippingFee = standardShippingFee.trim();
+        log.info("Tax & shipping updated: gst={}, freeAbove={}, fee={}", activeTaxPercentage, activeFreeShippingThreshold, activeDefaultShippingFee);
+    }
+
     public StoreSettingsDto getStoreSettings() {
         return StoreSettingsDto.builder()
-                .storeName("Southcolours")
+                .storeName(activeStoreName)
                 .storeLogoUrl("https://southcolours.com/logo.png")
-                .supportEmail("support@southcolours.com")
-                .supportPhone("+91 9876543210")
-                .storeAddress("123, Green Park, Bangalore, Karnataka - 560001")
-                .taxPercentage("5%")
-                .freeShippingThreshold("1500")
-                .defaultShippingFee("99")
+                .supportEmail(activeSupportEmail)
+                .supportPhone(activeSupportPhone)
+                .storeAddress(activeStoreAddress)
+                .taxPercentage(activeTaxPercentage)
+                .freeShippingThreshold(activeFreeShippingThreshold)
+                .defaultShippingFee(activeDefaultShippingFee)
                 .razorpayLiveMode(false)
                 .emailNotificationsEnabled(true)
                 .twoFactorAuthEnabled(true)

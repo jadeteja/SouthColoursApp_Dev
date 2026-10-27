@@ -55,6 +55,43 @@ public class AdminOperationsController {
         return ResponseEntity.ok(ApiResponse.success(adminService.getStoreSettings(), "Store settings retrieved"));
     }
 
+    @PostMapping("/store-profile")
+    @Operation(summary = "Save Store profile name, phone, and contact email")
+    public ResponseEntity<ApiResponse<String>> saveStoreProfile(
+            @RequestBody java.util.Map<String, Object> payload
+    ) {
+        String storeName = payload.get("storeName") != null ? payload.get("storeName").toString() : null;
+        String phone = payload.get("phone") != null ? payload.get("phone").toString() : null;
+        String email = payload.get("email") != null ? payload.get("email").toString() : null;
+
+        adminService.updateStoreProfile(storeName, phone, email);
+        return ResponseEntity.ok(ApiResponse.success("SUCCESS", "Store profile details saved successfully"));
+    }
+
+    @PostMapping("/store-address")
+    @Operation(summary = "Save Store pickup & shipping address")
+    public ResponseEntity<ApiResponse<String>> saveStoreAddress(
+            @RequestBody java.util.Map<String, Object> payload
+    ) {
+        String address = payload.get("address") != null ? payload.get("address").toString() : null;
+
+        adminService.updateStoreAddress(address);
+        return ResponseEntity.ok(ApiResponse.success("SUCCESS", "Store address saved successfully"));
+    }
+
+    @PostMapping("/tax-shipping")
+    @Operation(summary = "Save Tax & shipping thresholds")
+    public ResponseEntity<ApiResponse<String>> saveTaxAndShipping(
+            @RequestBody java.util.Map<String, Object> payload
+    ) {
+        String gstRate = payload.get("gstRate") != null ? payload.get("gstRate").toString() : null;
+        String freeShippingAbove = payload.get("freeShippingAbove") != null ? payload.get("freeShippingAbove").toString() : null;
+        String standardShippingFee = payload.get("standardShippingFee") != null ? payload.get("standardShippingFee").toString() : null;
+
+        adminService.updateTaxAndShipping(gstRate, freeShippingAbove, standardShippingFee);
+        return ResponseEntity.ok(ApiResponse.success("SUCCESS", "Tax and shipping rules saved successfully"));
+    }
+
     @PostMapping("/payment-settings")
     @Operation(summary = "Save Razorpay key ID, secret, and COD status from Admin Settings")
     public ResponseEntity<ApiResponse<String>> savePaymentSettings(

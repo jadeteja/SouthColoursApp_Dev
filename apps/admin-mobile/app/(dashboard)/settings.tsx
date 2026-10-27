@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -77,6 +77,45 @@ export default function AdminSettingsScreen() {
   const [tempField2, setTempField2] = useState('');
   const [tempField3, setTempField3] = useState('');
 
+  // Fetch initial store settings from backend
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const token = useAdminAuthStore.getState().token;
+        const headers: Record<string, string> = {};
+        if (token && token !== 'mock_admin_token') {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const res = await fetch(`${API_BASE_URL}/admin/settings`, { headers });
+        const json = await res.json();
+        if (json.success && json.data) {
+          const d = json.data;
+          setStoreConfig((prev) => ({
+            ...prev,
+            storeName: d.storeName || prev.storeName,
+            phone: d.supportPhone || prev.phone,
+            email: d.supportEmail || prev.email,
+            address: d.storeAddress || prev.address,
+            gstRate: d.taxPercentage ? d.taxPercentage.replace('%', '') : prev.gstRate,
+            freeShippingAbove: d.freeShippingThreshold || prev.freeShippingAbove,
+            standardShippingFee: d.defaultShippingFee || prev.standardShippingFee,
+            razorpayKeyId: d.razorpayKeyId || prev.razorpayKeyId,
+            razorpayKeySecret: d.razorpayKeySecret || prev.razorpayKeySecret,
+            codEnabled: d.codEnabled !== undefined ? d.codEnabled : prev.codEnabled,
+            whatsappEnabled: d.whatsappEnabled !== undefined ? d.whatsappEnabled : prev.whatsappEnabled,
+            whatsappAdminPhone: d.whatsappAdminPhone || prev.whatsappAdminPhone,
+            whatsappTemplate: d.whatsappTemplate || prev.whatsappTemplate,
+            whatsappPhoneNumberId: d.whatsappPhoneNumberId || prev.whatsappPhoneNumberId,
+            whatsappAccessToken: d.whatsappAccessToken || prev.whatsappAccessToken,
+          }));
+        }
+      } catch (e) {
+        console.log('Error fetching admin settings:', e);
+      }
+    };
+    fetchSettings();
+  }, []);
+
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to log out of the Southcolours Admin Panel?', [
       { text: 'Cancel', style: 'cancel' },
@@ -124,37 +163,81 @@ export default function AdminSettingsScreen() {
   };
 
   const saveConfig = () => {
+    const token = useAdminAuthStore.getState().token;
+    const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token && token !== 'mock_admin_token') {
+      authHeaders['Authorization'] = `Bearer ${token}`;
+    }
+
     if (configType === 'Store Profile') {
+      const newStoreName = tempField1.trim() || storeConfig.storeName;
+      const newPhone = tempField2.trim() || storeConfig.phone;
+      const newEmail = tempField3.trim() || storeConfig.email;
+
+      fetch(`${API_BASE_URL}/admin/store-profile`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          storeName: newStoreName,
+          phone: newPhone,
+          email: newEmail,
+        }),
+      }).catch((e) => console.log('Store profile sync warning:', e));
+
       setStoreConfig((prev) => ({
         ...prev,
-        storeName: tempField1.trim() || prev.storeName,
-        phone: tempField2.trim() || prev.phone,
-        email: tempField3.trim() || prev.email,
+        storeName: newStoreName,
+        phone: newPhone,
+        email: newEmail,
       }));
       Alert.alert('Saved', 'Store profile details updated successfully.');
     } else if (configType === 'Store Address') {
+      const newAddress = tempField1.trim() || storeConfig.address;
+
+      fetch(`${API_BASE_URL}/admin/store-address`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          address: newAddress,
+        }),
+      }).catch((e) => console.log('Store address sync warning:', e));
+
       setStoreConfig((prev) => ({
         ...prev,
-        address: tempField1.trim() || prev.address,
+        address: newAddress,
       }));
       Alert.alert('Saved', 'Store pickup & shipping address updated.');
     } else if (configType === 'Tax & Shipping') {
+      const newGst = tempField1.trim() || storeConfig.gstRate;
+      const newFreeAbove = tempField2.trim() || storeConfig.freeShippingAbove;
+      const newStandardFee = tempField3.trim() || storeConfig.standardShippingFee;
+
+      fetch(`${API_BASE_URL}/admin/tax-shipping`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          gstRate: newGst,
+          freeShippingAbove: newFreeAbove,
+          standardShippingFee: newStandardFee,
+        }),
+      }).catch((e) => console.log('Tax & shipping sync warning:', e));
+
       setStoreConfig((prev) => ({
         ...prev,
-        gstRate: tempField1.trim() || prev.gstRate,
-        freeShippingAbove: tempField2.trim() || prev.freeShippingAbove,
-        standardShippingFee: tempField3.trim() || prev.standardShippingFee,
+        gstRate: newGst,
+        freeShippingAbove: newFreeAbove,
+        standardShippingFee: newStandardFee,
       }));
       Alert.alert('Saved', 'Tax and shipping thresholds updated.');
     } else if (configType === 'Payment Gateway (Razorpay)') {
-      const newKeyId = tempField1.trim() || prev.razorpayKeyId;
-      const newKeySecret = tempField2.trim() || prev.razorpayKeySecret;
+      const newKeyId = tempField1.trim() || storeConfig.razorpayKeyId;
+      const newKeySecret = tempField2.trim() || storeConfig.razorpayKeySecret;
       const newCod = tempField3.toUpperCase() === 'YES';
 
       // Send to backend so Razorpay payment requests use this live key
       fetch(`${API_BASE_URL}/admin/payment-settings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           razorpayKeyId: newKeyId,
           razorpayKeySecret: newKeySecret,
@@ -188,7 +271,7 @@ export default function AdminSettingsScreen() {
 
       fetch(`${API_BASE_URL}/admin/whatsapp-settings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           whatsappEnabled: newEnabled,
           whatsappAdminPhone: newAdminPhone,
@@ -325,7 +408,7 @@ export default function AdminSettingsScreen() {
               </View>
               <View>
                 <Text style={styles.rowLabel}>Store Profile</Text>
-                <Text style={styles.rowSubLabel}>{storeConfig.storeName}</Text>
+                <Text style={styles.rowSubLabel}>{storeConfig.storeName} &bull; {storeConfig.phone}</Text>
               </View>
             </View>
             <Text style={styles.chevron}>›</Text>
